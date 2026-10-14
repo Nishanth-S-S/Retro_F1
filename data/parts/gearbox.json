@@ -1,0 +1,10 @@
+[
+  {"id": "gearbox_basic_6", "display_name": "Basic 6-Speed", "description": "Dependable all-round ratios. Shifts are a little lazy.", "price": 0, "research_cost": 0, "mass": 44,
+   "stats": {"ratios": [2.9, 2.2, 1.75, 1.42, 1.19, 1.0], "reverse_ratio": 3.0, "final_drive": 3.95, "efficiency": 0.9, "shift_time": 0.22}},
+  {"id": "gearbox_close_ratio", "display_name": "Close Ratio", "description": "Short stacked gears keep the engine on the boil out of corners. Runs out of revs on long straights.", "price": 4500, "research_cost": 0, "mass": 45,
+   "stats": {"ratios": [2.7, 2.1, 1.72, 1.44, 1.24, 1.08], "reverse_ratio": 3.0, "final_drive": 4.45, "efficiency": 0.91, "shift_time": 0.18}},
+  {"id": "gearbox_long_ratio", "display_name": "Long Ratio", "description": "Tall gearing for top speed. Sluggish out of slow corners unless the engine has torque to spare.", "price": 4500, "research_cost": 0, "mass": 45,
+   "stats": {"ratios": [2.9, 2.2, 1.75, 1.42, 1.19, 1.0], "reverse_ratio": 3.0, "final_drive": 3.5, "efficiency": 0.91, "shift_time": 0.18}},
+  {"id": "gearbox_seamless", "display_name": "Seamless Shift", "description": "Near-instant shifts and low friction losses. Heavy and expensive.", "price": 12000, "research_cost": 35, "mass": 53,
+   "stats": {"ratios": [2.9, 2.2, 1.75, 1.42, 1.19, 1.0], "reverse_ratio": 3.0, "final_drive": 3.95, "efficiency": 0.95, "shift_time": 0.05}}
+]

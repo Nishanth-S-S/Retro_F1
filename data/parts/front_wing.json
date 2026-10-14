@@ -1,0 +1,10 @@
+[
+  {"id": "front_wing_low_drag", "display_name": "Low Drag Front", "description": "A single slim element. Slippery on the straights, vague front end in fast corners.", "price": 2500, "research_cost": 0, "mass": 7,
+   "stats": {"downforce_coefficient": 0.42, "drag_coefficient": 0.1, "adjustability": 0.3}},
+  {"id": "front_wing_balanced", "display_name": "Balanced Front", "description": "Two-element all-rounder.", "price": 0, "research_cost": 0, "mass": 9,
+   "stats": {"downforce_coefficient": 0.78, "drag_coefficient": 0.22, "adjustability": 0.35}},
+  {"id": "front_wing_high_df", "display_name": "High Downforce Front", "description": "Three elements of front-end bite. Costs top speed and can make the rear nervous if it isn't matched.", "price": 3500, "research_cost": 0, "mass": 12,
+   "stats": {"downforce_coefficient": 1.12, "drag_coefficient": 0.36, "adjustability": 0.35}},
+  {"id": "front_wing_cascade", "display_name": "Cascade Front", "description": "Experimental multi-plane wing with a very wide adjustment range. Heavy on the nose.", "price": 7000, "research_cost": 25, "mass": 16,
+   "stats": {"downforce_coefficient": 1.25, "drag_coefficient": 0.38, "adjustability": 0.55}}
+]

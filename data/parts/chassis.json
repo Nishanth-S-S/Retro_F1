@@ -1,0 +1,8 @@
+[
+  {"id": "chassis_balanced", "display_name": "Balanced Tub", "description": "A sound aluminium monocoque.", "price": 0, "research_cost": 0, "mass": 285,
+   "stats": {"rigidity": 1.0}},
+  {"id": "chassis_durable", "display_name": "Durable Tub", "description": "Thick-walled and very rigid, so it answers steering inputs crisply. You pay for it on the scales.", "price": 3000, "research_cost": 0, "mass": 325,
+   "stats": {"rigidity": 1.14}},
+  {"id": "chassis_lightweight", "display_name": "Lightweight Tub", "description": "Composite tub. Much lighter, slightly more flex, very expensive.", "price": 15000, "research_cost": 45, "mass": 246,
+   "stats": {"rigidity": 0.95}}
+]

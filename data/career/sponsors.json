@@ -1,0 +1,82 @@
+[
+ {
+  "id": "volt_cola",
+  "name": "Volt Cola",
+  "kind": "drinks",
+  "signing": 1200,
+  "per_race": 800,
+  "podium_bonus": 150,
+  "races": 6,
+  "min_rep": 30
+ },
+ {
+  "id": "northwind_air",
+  "name": "Northwind Air",
+  "kind": "airline",
+  "signing": 2500,
+  "per_race": 1100,
+  "podium_bonus": 250,
+  "races": 8,
+  "min_rep": 45
+ },
+ {
+  "id": "kestrel_bank",
+  "name": "Kestrel Bank",
+  "kind": "finance",
+  "signing": 5000,
+  "per_race": 1500,
+  "podium_bonus": 400,
+  "races": 10,
+  "min_rep": 60
+ },
+ {
+  "id": "pixelforge",
+  "name": "Pixelforge",
+  "kind": "tech",
+  "signing": 1500,
+  "per_race": 900,
+  "podium_bonus": 300,
+  "races": 5,
+  "min_rep": 35
+ },
+ {
+  "id": "orbit_telecom",
+  "name": "Orbit Telecom",
+  "kind": "telecom",
+  "signing": 3500,
+  "per_race": 1300,
+  "podium_bonus": 200,
+  "races": 8,
+  "min_rep": 50
+ },
+ {
+  "id": "granite_tools",
+  "name": "Granite Tools",
+  "kind": "industrial",
+  "signing": 800,
+  "per_race": 700,
+  "podium_bonus": 100,
+  "races": 6,
+  "min_rep": 20
+ },
+ {
+  "id": "lumen_energy",
+  "name": "Lumen Energy",
+  "kind": "energy",
+  "signing": 4000,
+  "per_race": 1700,
+  "podium_bonus": 350,
+  "races": 10,
+  "min_rep": 70
+ },
+ {
+  "id": "tidal_watches",
+  "name": "Tidal Watches",
+  "kind": "luxury",
+  "signing": 6000,
+  "per_race": 2000,
+  "podium_bonus": 500,
+  "races": 10,
+  "min_rep": 80
+ }
+]

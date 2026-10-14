@@ -1,0 +1,20 @@
+{
+  "starting_money": 25000,
+  "starting_research": 0,
+  "explosion_penalty": 1000,
+  "explosion_penalty_test": 250,
+  "race_money": [5000, 3800, 3000, 2400, 1900, 1500, 1200, 1000],
+  "race_research": [30, 22, 16, 10, 8, 6, 5, 4],
+  "first_lap_research": 10,
+  "time_trial_targets": [
+    {"name": "BRONZE", "time": 98.0, "money": 500, "research": 6},
+    {"name": "SILVER", "time": 94.0, "money": 1000, "research": 10},
+    {"name": "GOLD", "time": 90.0, "money": 2000, "research": 16}
+  ],
+  "starting_parts": {
+    "chassis": "chassis_balanced", "engine": "engine_compact_4", "gearbox": "gearbox_basic_6",
+    "front_wing": "front_wing_balanced", "rear_wing": "rear_wing_balanced",
+    "front_suspension": "suspension_balanced", "rear_suspension": "suspension_balanced",
+    "brakes": "brakes_standard", "tires": "tires_hard", "ballast": "ballast_0"
+  }
+}

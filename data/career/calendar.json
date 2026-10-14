@@ -1,0 +1,82 @@
+[
+ {
+  "name": "Falcon Ridge GP",
+  "track": "falcon_ridge",
+  "rain": 0.15,
+  "wear": 1.0,
+  "safety_car": 0.05,
+  "laps": 20
+ },
+ {
+  "name": "Port Azure Street Race",
+  "track": "port_azure",
+  "rain": 0.1,
+  "wear": 0.8,
+  "safety_car": 0.12,
+  "laps": 20
+ },
+ {
+  "name": "Tempo Park GP",
+  "track": "tempo_park",
+  "rain": 0.1,
+  "wear": 0.9,
+  "safety_car": 0.04,
+  "laps": 20
+ },
+ {
+  "name": "Silver Lake GP",
+  "track": "silver_lake",
+  "rain": 0.35,
+  "wear": 1.0,
+  "safety_car": 0.05,
+  "laps": 20
+ },
+ {
+  "name": "Nordhaven GP",
+  "track": "nordhaven",
+  "rain": 0.55,
+  "wear": 0.9,
+  "safety_car": 0.07,
+  "laps": 20
+ },
+ {
+  "name": "Falcon Ridge Summer GP",
+  "track": "falcon_ridge",
+  "rain": 0.05,
+  "wear": 1.3,
+  "safety_car": 0.04,
+  "laps": 20
+ },
+ {
+  "name": "Port Azure Night Race",
+  "track": "port_azure",
+  "rain": 0.2,
+  "wear": 1.0,
+  "safety_car": 0.12,
+  "laps": 20
+ },
+ {
+  "name": "Silver Lake Trophy",
+  "track": "silver_lake",
+  "rain": 0.3,
+  "wear": 1.2,
+  "safety_car": 0.06,
+  "laps": 20
+ },
+ {
+  "name": "Tempo Park Speed GP",
+  "track": "tempo_park",
+  "rain": 0.1,
+  "wear": 0.9,
+  "safety_car": 0.05,
+  "laps": 20
+ },
+ {
+  "name": "Nordhaven Finale",
+  "track": "nordhaven",
+  "rain": 0.4,
+  "wear": 1.1,
+  "safety_car": 0.06,
+  "laps": 20
+ }
+]

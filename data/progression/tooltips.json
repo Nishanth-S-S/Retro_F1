@@ -1,0 +1,22 @@
+{
+  "WEIGHT": "Total mass of the car including driver and fuel.\n\nEvery kilo has to be accelerated, stopped and turned. Lighter is almost always faster - but lightweight parts cost money or give something else up.",
+  "POWER": "Peak engine output.\n\nMore power means more acceleration and top speed, but powerful engines are heavier, hotter and thirstier (extra fuel mass).",
+  "POWER / WEIGHT": "Power divided by mass. The best single indicator of straight-line acceleration.",
+  "TOP SPEED": "Estimated maximum speed.\n\nLimited either by aerodynamic drag (more wing = slower) or by running out of revs in top gear (gearing).",
+  "0-100 KM/H": "Estimated launch acceleration. Limited by rear tire traction at low speed, so rearward weight helps here.",
+  "MECH GRIP": "Cornering grip from tires and suspension alone, in g.\n\nThis is what you have in slow corners where wings do very little.",
+  "AERO GRIP": "Downforce at 200 km/h.\n\nDownforce pushes the tires into the road and grows with the square of speed. It costs drag.",
+  "BRAKING": "Peak deceleration available from 200 km/h, in g.\n\nLimited by brake force, tire grip and downforce.",
+  "WEIGHT DIST": "How the car's mass is split between the front and rear axles.\n\nRearward weight improves traction but makes the rear more eager to step out. Forward weight is stable but tends to understeer.",
+  "AERO DIST": "How downforce is split between the axles.\n\nIf the front share is much higher than the front weight share, the car turns in sharply but becomes unstable at high speed. Too much rear aero gives high-speed understeer.",
+  "HANDLING BALANCE": "Predicted cornering attitude.\n\nUNDERSTEER: the front tires give up first and the car runs wide.\nOVERSTEER: the rear gives up first and the car rotates.\n\nLow-speed balance comes from weight and suspension, high-speed balance mostly from wings.",
+  "BRAKE BIAS": "Controls how braking force is divided between the front and rear tires.\n\nMore front bias increases stability but may cause front-wheel lockups. More rear bias helps the car rotate but can snap the rear loose.",
+  "FRONT WING ANGLE": "Steeper angle = more front downforce and more drag.\n\nMore front wing gives sharper high-speed turn-in. Too much relative to the rear makes the car unstable.",
+  "REAR WING ANGLE": "Steeper angle = more rear downforce and more drag.\n\nMore rear wing calms the car at high speed. Too much causes high-speed understeer and costs top speed.",
+  "BALLAST POSITION": "Slides the ballast block along the car.\n\nForward: more front weight, calmer rear, more understeer.\nRearward: better traction, livelier rotation.",
+  "CENTER OF MASS": "The balance point of every part's mass.\n\nIt decides how much load each axle carries, and therefore how much grip each end has when you brake, turn and accelerate.",
+  "ABS": "Anti-lock braking. Prevents wheel lock by holding the brakes a little below the limit.\n\nEasier, but a skilled driver can out-brake it.",
+  "TRACTION CONTROL": "Cuts engine torque when the rear tires start to spin.\n\nEasier, but it cuts earlier than a skilled right thumb would.",
+  "TIRE TEMPERATURE": "Tires grip best at around 85-100 C.\n\nCold tires and overheated tires both lose grip. Sliding, wheelspin and lockups add heat quickly.",
+  "TIRE WEAR": "Grip falls as the tire wears. Soft compounds wear fastest; sliding and overheating accelerate it."
+}

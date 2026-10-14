@@ -1,0 +1,8 @@
+[
+  {"id": "tires_hard", "display_name": "Hard", "description": "Lower peak grip, but barely wears and tolerates a wide temperature range.", "price": 0, "research_cost": 0, "mass": 40,
+   "stats": {"base_grip": 1.42, "wear_rate": 0.35, "optimal_temperature": 92, "temperature_window": 22, "rolling_resistance": 0.011, "heat_rate": 0.9}},
+  {"id": "tires_medium", "display_name": "Medium", "description": "A balance of grip and life.", "price": 2500, "research_cost": 0, "mass": 40,
+   "stats": {"base_grip": 1.55, "wear_rate": 1.0, "optimal_temperature": 92, "temperature_window": 16, "rolling_resistance": 0.012, "heat_rate": 1.0}},
+  {"id": "tires_soft", "display_name": "Soft", "description": "Maximum grip while it lasts. Wears quickly and overheats if you slide it.", "price": 4000, "research_cost": 0, "mass": 40,
+   "stats": {"base_grip": 1.68, "wear_rate": 1.9, "optimal_temperature": 90, "temperature_window": 11, "rolling_resistance": 0.014, "heat_rate": 1.15}}
+]

@@ -1,0 +1,383 @@
+[
+ {
+  "id": "collision_blame",
+  "when": "collision",
+  "category": "DRIVER DRAMA",
+  "text": "{d1} and {d2} took each other off. Both are in your office, both blaming the other. The cameras are outside.",
+  "options": [
+   {
+    "text": "Back {d1} publicly",
+    "effects": {
+     "morale_d1": 12,
+     "morale_d2": -18,
+     "rep": -2
+    }
+   },
+   {
+    "text": "Back {d2} publicly",
+    "effects": {
+     "morale_d1": -18,
+     "morale_d2": 12,
+     "rep": -2
+    }
+   },
+   {
+    "text": "Fine them both, in private",
+    "effects": {
+     "morale_d1": -6,
+     "morale_d2": -6,
+     "board": 4,
+     "rep": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "number_one",
+  "when": "ego",
+  "category": "DRIVER DRAMA",
+  "text": "{star} wants it in writing: clear number-one status, priority on strategy and upgrades. \"Or I start taking calls from {rival}.\"",
+  "options": [
+   {
+    "text": "Grant number-one status",
+    "effects": {
+     "morale_star": 18,
+     "morale_other": -20,
+     "number_one": "star"
+    }
+   },
+   {
+    "text": "Refuse - equal treatment",
+    "effects": {
+     "morale_star": -16,
+     "morale_other": 8,
+     "rep": 2
+    }
+   },
+   {
+    "text": "Promise it for next season",
+    "effects": {
+     "morale_star": 4,
+     "morale_other": -4,
+     "rep": -3
+    }
+   }
+  ]
+ },
+ {
+  "id": "held_back",
+  "when": "held",
+  "category": "DRIVER DRAMA",
+  "text": "{d2} is furious about being told to hold position. \"I was faster. Everyone saw it.\"",
+  "options": [
+   {
+    "text": "Apologise, promise a free fight next time",
+    "effects": {
+     "morale_d2": 10,
+     "morale_d1": -4
+    }
+   },
+   {
+    "text": "\"The team comes first.\"",
+    "effects": {
+     "morale_d2": -10,
+     "board": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "board_pressure",
+  "when": "board_low",
+  "category": "BOARD PRESSURE",
+  "text": "A message from {owner}: results are below target and patience is thin. They want a plan by Monday.",
+  "options": [
+   {
+    "text": "Promise a podium within three races",
+    "effects": {
+     "board": 10,
+     "promise": 3
+    }
+   },
+   {
+    "text": "Ask for investment instead",
+    "effects": {
+     "board": -6,
+     "money": 4000
+    }
+   },
+   {
+    "text": "Blame the drivers",
+    "effects": {
+     "board": 5,
+     "morale_d1": -10,
+     "morale_d2": -10,
+     "rep": -4
+    }
+   }
+  ]
+ },
+ {
+  "id": "owner_cost_cut",
+  "when": "any",
+  "category": "BOARD PRESSURE",
+  "text": "{owner} wants a 10% cost cut. \"The spreadsheet doesn't care about lap time.\"",
+  "options": [
+   {
+    "text": "Agree and trim the factory budget",
+    "effects": {
+     "board": 8,
+     "money": -1500,
+     "car": -1
+    }
+   },
+   {
+    "text": "Push back hard",
+    "effects": {
+     "board": -8,
+     "rep": 3
+    }
+   },
+   {
+    "text": "Offer a sponsor-funded compromise",
+    "effects": {
+     "board": 2,
+     "money": -500
+    }
+   }
+  ]
+ },
+ {
+  "id": "press_conference",
+  "when": "any",
+  "category": "MEDIA",
+  "text": "Press conference. A reporter asks whether {rival} are simply a better-run team than yours.",
+  "options": [
+   {
+    "text": "Stay gracious",
+    "effects": {
+     "rep": 4
+    }
+   },
+   {
+    "text": "Take a swing at {rival}",
+    "effects": {
+     "rep": -3,
+     "morale_d1": 4,
+     "morale_d2": 4,
+     "board": -2
+    }
+   },
+   {
+    "text": "Blame the regulations",
+    "effects": {
+     "rep": -1,
+     "fia": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "documentary",
+  "when": "any",
+  "category": "MEDIA",
+  "text": "A streaming crew wants full access to the garage for a documentary. Good money, zero privacy.",
+  "options": [
+   {
+    "text": "Let them in",
+    "effects": {
+     "money": 2500,
+     "rep": 5,
+     "morale_d1": -5,
+     "morale_d2": -5
+    }
+   },
+   {
+    "text": "Decline",
+    "effects": {
+     "morale_d1": 3,
+     "morale_d2": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "grey_area",
+  "when": "any",
+  "category": "POLITICS",
+  "text": "Your aero chief has found a loophole: a floor edge that flexes at speed. Legal by the letter. Probably.",
+  "options": [
+   {
+    "text": "Run it",
+    "effects": {
+     "car": 3,
+     "fia": 2
+    }
+   },
+   {
+    "text": "Ask the FIA for a clarification first",
+    "effects": {
+     "rep": 3,
+     "car": 1
+    }
+   },
+   {
+    "text": "Bin it",
+    "effects": {
+     "board": -2
+    }
+   }
+  ]
+ },
+ {
+  "id": "protest",
+  "when": "fia",
+  "category": "POLITICS",
+  "text": "{rival} have filed a protest against your car. The stewards want to see you.",
+  "options": [
+   {
+    "text": "Fight it with lawyers",
+    "effects": {
+     "money": -2000,
+     "gamble": {
+      "chance": 0.5,
+      "win": {
+       "rep": 4
+      },
+      "lose": {
+       "car": -3,
+       "money": -3000,
+       "board": -6
+      }
+     },
+     "fia": -2
+    }
+   },
+   {
+    "text": "Quietly remove the part",
+    "effects": {
+     "car": -2,
+     "fia": -2,
+     "rep": 1
+    }
+   },
+   {
+    "text": "Counter-protest their car",
+    "effects": {
+     "rep": -4,
+     "fia": -1,
+     "gamble": {
+      "chance": 0.35,
+      "win": {
+       "board": 6
+      },
+      "lose": {
+       "money": -1500
+      }
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "cost_cap_audit",
+  "when": "cap_high",
+  "category": "POLITICS",
+  "text": "The FIA's auditors are asking pointed questions about your cost cap submission.",
+  "options": [
+   {
+    "text": "Open the books fully",
+    "effects": {
+     "rep": 3,
+     "board": -2
+    }
+   },
+   {
+    "text": "Reclassify catering as 'aero research'",
+    "effects": {
+     "cap": -4000,
+     "fia": 2
+    }
+   },
+   {
+    "text": "Lobby the other principals for a higher cap",
+    "effects": {
+     "rep": -2,
+     "gamble": {
+      "chance": 0.4,
+      "win": {
+       "cap": -6000
+      },
+      "lose": {
+       "board": -3
+      }
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "rival_alliance",
+  "when": "any",
+  "category": "POLITICS",
+  "text": "The principal of {rival} proposes a quiet alliance: vote together on next year's rules and share wind-tunnel data.",
+  "options": [
+   {
+    "text": "Shake on it",
+    "effects": {
+     "car": 1,
+     "rep": -2,
+     "fia": 1
+    }
+   },
+   {
+    "text": "Politely decline",
+    "effects": {
+     "rep": 1
+    }
+   },
+   {
+    "text": "Leak the offer to the press",
+    "effects": {
+     "rep": -5,
+     "board": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "poach",
+  "when": "any",
+  "category": "DRIVER DRAMA",
+  "text": "{rival} have made {d1} an offer. Matching it means a raise.",
+  "options": [
+   {
+    "text": "Give a raise",
+    "effects": {
+     "salary_d1": 0.15,
+     "morale_d1": 10
+    }
+   },
+   {
+    "text": "Call the bluff",
+    "effects": {
+     "morale_d1": -12
+    }
+   },
+   {
+    "text": "Sell the dream, not the money",
+    "effects": {
+     "gamble": {
+      "chance": 0.5,
+      "win": {
+       "morale_d1": 6
+      },
+      "lose": {
+       "morale_d1": -14
+      }
+     }
+    }
+   }
+  ]
+ }
+]

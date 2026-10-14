@@ -1,0 +1,278 @@
+class_name Track
+extends Node2D
+## Builds the visible circuit and its collision from TrackData: asphalt, curbs, runoff,
+## barriers and trackside scenery, all as procedural vertex-coloured geometry.
+
+const PPM := VehiclePhysicsConfig.PPM
+const COLOR_GRASS := Color("3d7a3a")
+const COLOR_GRASS_STRIPE := Color("44853f")
+const COLOR_GRAVEL := Color("c9b58a")
+const COLOR_ASPHALT := Color("2d3036")
+const COLOR_ASPHALT_ALT := Color("31343b")
+const COLOR_LINE := Color("e9edf2")
+const COLOR_CURB_RED := Color("d43d3d")
+const COLOR_CURB_WHITE := Color("f1f1f1")
+const COLOR_BARRIER_A := Color("dfe5ec")
+const COLOR_BARRIER_B := Color("3a78c2")
+const COLOR_TREE := Color("275c2c")
+const COLOR_TREE_LIGHT := Color("347a39")
+const BARRIER_THICKNESS := 1.3
+
+@export_file("*.json") var track_file := "res://data/tracks/falcon_ridge.json"
+
+var data: TrackData
+var _st: SurfaceTool
+
+
+func _ready() -> void:
+	if data == null:
+		data = TrackData.load_track(GameManager.track_file())
+	_build_path()
+	_build_mesh()
+	_build_barriers()
+
+
+func _build_path() -> void:
+	var path := Path2D.new()
+	path.name = "CenterLine"
+	path.curve = data.curve
+	path.visible = false
+	add_child(path)
+
+
+func _edge(i: int, offset: float) -> Vector2:
+	var j := data.wrap_index(i)
+	return data.points[j] + data.normals[j] * offset * PPM
+
+
+func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void:
+	_st.set_color(color)
+	_st.add_vertex(Vector3(a.x, a.y, 0)); _st.add_vertex(Vector3(b.x, b.y, 0)); _st.add_vertex(Vector3(c.x, c.y, 0))
+	_st.add_vertex(Vector3(a.x, a.y, 0)); _st.add_vertex(Vector3(c.x, c.y, 0)); _st.add_vertex(Vector3(d.x, d.y, 0))
+
+
+func _strip_segment(i: int, inner: float, outer: float, color: Color) -> void:
+	_quad(_edge(i, inner), _edge(i + 1, inner), _edge(i + 1, outer), _edge(i, outer), color)
+
+
+func _disc(center: Vector2, radius: float, color: Color, segments: int = 10) -> void:
+	_st.set_color(color)
+	for s in segments:
+		var a0 := TAU * s / segments
+		var a1 := TAU * (s + 1) / segments
+		_st.add_vertex(Vector3(center.x, center.y, 0))
+		_st.add_vertex(Vector3(center.x + cos(a0) * radius, center.y + sin(a0) * radius, 0))
+		_st.add_vertex(Vector3(center.x + cos(a1) * radius, center.y + sin(a1) * radius, 0))
+
+
+func _rect(center: Vector2, half: Vector2, angle: float, color: Color) -> void:
+	var x := Vector2.RIGHT.rotated(angle) * half.x
+	var y := Vector2.DOWN.rotated(angle) * half.y
+	_quad(center - x - y, center + x - y, center + x + y, center - x + y, color)
+
+
+func _build_mesh() -> void:
+	_st = SurfaceTool.new()
+	_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var area := data.bounds.grow(450.0 * PPM)
+	# Grass with mown stripes.
+	_quad(area.position, Vector2(area.end.x, area.position.y), area.end, Vector2(area.position.x, area.end.y), COLOR_GRASS)
+	var stripe := 30.0 * PPM
+	var y := area.position.y
+	while y < area.end.y:
+		_quad(Vector2(area.position.x, y), Vector2(area.end.x, y), Vector2(area.end.x, y + stripe), Vector2(area.position.x, y + stripe), COLOR_GRASS_STRIPE)
+		y += stripe * 2.0
+	var hw := data.half_width
+	var n := data.count
+	# Gravel traps.
+	for i in n:
+		var j := data.wrap_index(i + 1)
+		if data.gravel_left[i] == 1 and data.gravel_left[j] == 1:
+			_quad(_edge(i, -hw), _edge(i + 1, -hw), _edge(i + 1, -data.barrier_left[j]), _edge(i, -data.barrier_left[i]), COLOR_GRAVEL)
+		if data.gravel_right[i] == 1 and data.gravel_right[j] == 1:
+			_quad(_edge(i, hw), _edge(i + 1, hw), _edge(i + 1, data.barrier_right[j]), _edge(i, data.barrier_right[i]), COLOR_GRAVEL)
+	# Asphalt: two alternating tones every few samples give the surface a readable flow at speed.
+	for i in n:
+		_strip_segment(i, -hw, hw, COLOR_ASPHALT if (i / 3) % 2 == 0 else COLOR_ASPHALT_ALT)
+	# Curbs.
+	for i in n:
+		var curb_color := COLOR_CURB_RED if i % 2 == 0 else COLOR_CURB_WHITE
+		if data.curb_left[i] == 1:
+			_strip_segment(i, -hw - data.curb_width, -hw, curb_color)
+		if data.curb_right[i] == 1:
+			_strip_segment(i, hw, hw + data.curb_width, curb_color)
+	# White edge lines.
+	for i in n:
+		_strip_segment(i, -hw, -hw + 0.3, COLOR_LINE)
+		_strip_segment(i, hw - 0.3, hw, COLOR_LINE)
+	_build_start_area()
+	_build_pit_lane()
+	# Barriers.
+	for i in n:
+		var j := data.wrap_index(i + 1)
+		var color := COLOR_BARRIER_A if (i / 2) % 2 == 0 else COLOR_BARRIER_B
+		_quad(_edge(i, -data.barrier_left[i]), _edge(i + 1, -data.barrier_left[j]), _edge(i + 1, -data.barrier_left[j] - BARRIER_THICKNESS), _edge(i, -data.barrier_left[i] - BARRIER_THICKNESS), color)
+		_quad(_edge(i, data.barrier_right[i]), _edge(i + 1, data.barrier_right[j]), _edge(i + 1, data.barrier_right[j] + BARRIER_THICKNESS), _edge(i, data.barrier_right[i] + BARRIER_THICKNESS), color)
+	_build_scenery()
+	var mesh_instance := MeshInstance2D.new()
+	mesh_instance.name = "TrackMesh"
+	mesh_instance.mesh = _st.commit()
+	mesh_instance.z_index = -10
+	add_child(mesh_instance)
+
+
+func _build_start_area() -> void:
+	var hw := data.half_width
+	var p := data.points[0]
+	var t := data.tangents[0]
+	var nrm := data.normals[0]
+	# Chequered start/finish line.
+	var cells := 14
+	var cell := hw * 2.0 / cells * PPM
+	for row in 2:
+		for c in cells:
+			var color := Color.WHITE if (c + row) % 2 == 0 else Color(0.08, 0.08, 0.09)
+			var origin := p + nrm * (-hw * PPM + c * cell) + t * (row * cell - cell)
+			_quad(origin, origin + nrm * cell, origin + nrm * cell + t * cell, origin + t * cell, color)
+	# Grid boxes.
+	for slot in 8:
+		var info := data.grid_slot(slot)
+		var pos: Vector2 = info["position"]
+		var ang: float = info["rotation"]
+		var fwd := Vector2.RIGHT.rotated(ang)
+		_rect(pos + fwd * 2.9 * PPM, Vector2(0.12, 1.5) * PPM, ang, COLOR_LINE)
+		_rect(pos + fwd * 1.7 * PPM + fwd.orthogonal() * 1.44 * PPM, Vector2(1.2, 0.1) * PPM, ang, COLOR_LINE)
+		_rect(pos + fwd * 1.7 * PPM - fwd.orthogonal() * 1.44 * PPM, Vector2(1.2, 0.1) * PPM, ang, COLOR_LINE)
+
+
+func _build_pit_lane() -> void:
+	var hw := data.half_width
+	var outer := hw + TrackData.PIT_WIDTH
+	var first := int(data.pit_start / data.spacing)
+	var last := int(data.pit_end / data.spacing)
+	for i in range(first, last):
+		_strip_segment(i, -outer, -hw, Color("3a3d45") if (i / 3) % 2 == 0 else Color("3e424a"))
+		_strip_segment(i, -outer, -outer + 0.3, COLOR_LINE)
+		if i % 2 == 0:
+			_strip_segment(i, -hw - 0.3, -hw, Color("f5c542"))       # dashed pit-lane line
+	# Service box with a chequered apron in front of it.
+	var box := int(data.pit_box / data.spacing)
+	for i in range(box - 2, box + 2):
+		_strip_segment(i, -outer + 0.8, -hw - 1.2, Color("c8201e"))
+	for i in range(box - 1, box + 1):
+		_strip_segment(i, -outer + 1.6, -hw - 2.0, Color("2b2e34"))
+	for k in 6:
+		var a := _edge(box + 2, -hw - 1.2 - k)
+		var t := data.tangents[data.wrap_index(box + 2)]
+		var n := data.normals[data.wrap_index(box + 2)]
+		_quad(a, a + t * 10.0, a + t * 10.0 - n * 10.0, a - n * 10.0, Color.WHITE if k % 2 == 0 else Color(0.08, 0.08, 0.09))
+	# Pit wall garages behind the lane.
+	for i in range(first + 4, last - 4, 8):
+		var j := data.wrap_index(i)
+		_rect(_edge(j, -outer - 4.5), Vector2(14, 3.2) * PPM, data.tangents[j].angle(), Color("d7dbe0"))
+		_rect(_edge(j, -outer - 4.5), Vector2(12, 1.0) * PPM, data.tangents[j].angle(), Color("c8201e") if (i / 8) % 2 == 0 else Color("14532d"))
+
+
+## A packed crowd: rows of tiny coloured heads on a stand.
+func _crowd(center: Vector2, half: Vector2, angle: float, rng: RandomNumberGenerator) -> void:
+	var shirts := [Color("c8201e"), Color("f4f6f2"), Color("14532d"), Color("f5c542"), Color("2f6fde"), Color("ff8a2e"), Color("1f2a3a")]
+	var x_axis := Vector2.RIGHT.rotated(angle)
+	var y_axis := Vector2.DOWN.rotated(angle)
+	var step := 1.7 * PPM
+	var cols := int(half.x * 2.0 / step)
+	var rows := int(half.y * 2.0 / step)
+	for ry in rows:
+		for cx in cols:
+			if rng.randf() < 0.12:
+				continue
+			var p := center + x_axis * (-half.x + (cx + 0.5) * step) + y_axis * (-half.y + (ry + 0.5) * step)
+			_rect(p, Vector2(0.55, 0.55) * PPM, angle, shirts[rng.randi() % shirts.size()])
+
+
+func _build_scenery() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20240
+	var n := data.count
+	# Brake marker boards ahead of heavy braking zones (gravel = big stop).
+	for i in n:
+		var next := data.wrap_index(i + 26)
+		var entering := (data.gravel_left[next] == 1 or data.gravel_right[next] == 1) and data.gravel_left[i] == 0 and data.gravel_right[i] == 0
+		var prev_next := data.wrap_index(i + 25)
+		var first := data.gravel_left[prev_next] == 0 and data.gravel_right[prev_next] == 0
+		if entering and first and absf(data.curvature[i]) < 0.002:
+			for k in 3:
+				var j := data.wrap_index(i + k * 12 - 8)
+				var side := 1.0 if data.gravel_left[next] == 1 else -1.0
+				var pos := _edge(j, side * (data.half_width + 3.0))
+				_rect(pos, Vector2(0.25, 1.1) * PPM, data.tangents[j].angle(), Color("f5c542"))
+				for b in (3 - k):
+					_rect(pos + data.tangents[j] * 0.3 * PPM + data.normals[j] * (b - (2 - k) * 0.5) * 0.6 * PPM, Vector2(0.1, 0.18) * PPM, data.tangents[j].angle(), Color(0.1, 0.1, 0.1))
+	# Grandstands along the start straight (behind the pit garages), and on race day in the
+	# career a few more at the big corners - all of them full.
+	var crowd := not GameManager.career_race.is_empty()
+	var stands: Array = []
+	for i in range(-40, 80, 20):
+		stands.append([data.wrap_index(i), -1.0])
+	if crowd:
+		for corner: Dictionary in data.corners:
+			if float(corner["radius"]) < 70.0:
+				# Outside of the corner is where the action is.
+				stands.append([data.index_at(float(corner["apex"])), -float(corner["direction"])])
+	for stand: Array in stands:
+		var j: int = stand[0]
+		var side: float = stand[1]
+		if side < 0.0 and stands.find(stand) < 6 and absf(data.curvature[j]) > 0.001:
+			continue
+		var offset := (data.barrier_left[j] if side < 0.0 else data.barrier_right[j]) + 16.0
+		var pos := _edge(j, side * offset)
+		var ang := data.tangents[j].angle()
+		_rect(pos + Vector2(4, 5), Vector2(34, 7.5) * PPM, ang, Color(0, 0, 0, 0.22))
+		_rect(pos, Vector2(34, 7.5) * PPM, ang, Color("58616e"))
+		if crowd:
+			_crowd(pos, Vector2(33, 6.8) * PPM, ang, rng)
+		else:
+			for row in 5:
+				_rect(pos + data.normals[j] * (row - 2) * 2.6 * PPM, Vector2(33, 0.8) * PPM, ang, [Color("d95050"), Color("e8e8e8"), Color("3a78c2"), Color("e8e8e8"), Color("f5c542")][row])
+	# Trees, kept clear of every piece of track.
+	var area := data.bounds.grow(260.0 * PPM)
+	var placed := 0
+	var attempts := 0
+	while placed < 420 and attempts < 6000:
+		attempts += 1
+		var pos := Vector2(rng.randf_range(area.position.x, area.end.x), rng.randf_range(area.position.y, area.end.y))
+		var idx := data.nearest_index(pos)
+		if absf(data.lateral_offset(pos, idx)) < 34.0 and pos.distance_to(data.points[idx]) < 40.0 * PPM:
+			continue
+		if pos.distance_to(data.points[idx]) < 34.0 * PPM:
+			continue
+		var r := rng.randf_range(2.6, 5.2) * PPM
+		_disc(pos + Vector2(r * 0.25, r * 0.35), r, Color(0, 0, 0, 0.2))
+		_disc(pos, r, COLOR_TREE.darkened(rng.randf_range(0.0, 0.18)))
+		_disc(pos - Vector2(r * 0.22, r * 0.22), r * 0.55, COLOR_TREE_LIGHT, 8)
+		placed += 1
+
+
+func _build_barriers() -> void:
+	var body := StaticBody2D.new()
+	body.name = "Barriers"
+	body.collision_layer = 2
+	body.collision_mask = 0
+	var material := PhysicsMaterial.new()
+	material.friction = 0.25
+	material.bounce = 0.12
+	body.physics_material_override = material
+	var segments := PackedVector2Array()
+	var n := data.count
+	for i in n:
+		var j := data.wrap_index(i + 1)
+		for depth: float in [0.0, BARRIER_THICKNESS]:
+			segments.append(_edge(i, -data.barrier_left[i] - depth))
+			segments.append(_edge(i + 1, -data.barrier_left[j] - depth))
+			segments.append(_edge(i, data.barrier_right[i] + depth))
+			segments.append(_edge(i + 1, data.barrier_right[j] + depth))
+	var shape := ConcavePolygonShape2D.new()
+	shape.segments = segments
+	var collider := CollisionShape2D.new()
+	collider.shape = shape
+	body.add_child(collider)
+	add_child(body)
