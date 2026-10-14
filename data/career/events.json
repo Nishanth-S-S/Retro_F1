@@ -1,8 +1,12 @@
 [
  {
   "id": "collision_blame",
-  "when": "collision",
   "category": "DRIVER DRAMA",
+  "priority": 100,
+  "if": [
+   "collision"
+  ],
+  "why": "Your two cars hit each other in the race.",
   "text": "{d1} and {d2} took each other off. Both are in your office, both blaming the other. The cameras are outside.",
   "options": [
    {
@@ -33,41 +37,13 @@
   ]
  },
  {
-  "id": "number_one",
-  "when": "ego",
-  "category": "DRIVER DRAMA",
-  "text": "{star} wants it in writing: clear number-one status, priority on strategy and upgrades. \"Or I start taking calls from {rival}.\"",
-  "options": [
-   {
-    "text": "Grant number-one status",
-    "effects": {
-     "morale_star": 18,
-     "morale_other": -20,
-     "number_one": "star"
-    }
-   },
-   {
-    "text": "Refuse - equal treatment",
-    "effects": {
-     "morale_star": -16,
-     "morale_other": 8,
-     "rep": 2
-    }
-   },
-   {
-    "text": "Promise it for next season",
-    "effects": {
-     "morale_star": 4,
-     "morale_other": -4,
-     "rep": -3
-    }
-   }
-  ]
- },
- {
   "id": "held_back",
-  "when": "held",
   "category": "DRIVER DRAMA",
+  "priority": 90,
+  "if": [
+   "held"
+  ],
+  "why": "You ordered your drivers to hold position.",
   "text": "{d2} is furious about being told to hold position. \"I was faster. Everyone saw it.\"",
   "options": [
    {
@@ -87,158 +63,20 @@
   ]
  },
  {
-  "id": "board_pressure",
-  "when": "board_low",
-  "category": "BOARD PRESSURE",
-  "text": "A message from {owner}: results are below target and patience is thin. They want a plan by Monday.",
-  "options": [
-   {
-    "text": "Promise a podium within three races",
-    "effects": {
-     "board": 10,
-     "promise": 3
-    }
-   },
-   {
-    "text": "Ask for investment instead",
-    "effects": {
-     "board": -6,
-     "money": 4000
-    }
-   },
-   {
-    "text": "Blame the drivers",
-    "effects": {
-     "board": 5,
-     "morale_d1": -10,
-     "morale_d2": -10,
-     "rep": -4
-    }
-   }
-  ]
- },
- {
-  "id": "owner_cost_cut",
-  "when": "any",
-  "category": "BOARD PRESSURE",
-  "text": "{owner} wants a 10% cost cut. \"The spreadsheet doesn't care about lap time.\"",
-  "options": [
-   {
-    "text": "Agree and trim the factory budget",
-    "effects": {
-     "board": 8,
-     "money": -1500,
-     "car": -1
-    }
-   },
-   {
-    "text": "Push back hard",
-    "effects": {
-     "board": -8,
-     "rep": 3
-    }
-   },
-   {
-    "text": "Offer a sponsor-funded compromise",
-    "effects": {
-     "board": 2,
-     "money": -500
-    }
-   }
-  ]
- },
- {
-  "id": "press_conference",
-  "when": "any",
-  "category": "MEDIA",
-  "text": "Press conference. A reporter asks whether {rival} are simply a better-run team than yours.",
-  "options": [
-   {
-    "text": "Stay gracious",
-    "effects": {
-     "rep": 4
-    }
-   },
-   {
-    "text": "Take a swing at {rival}",
-    "effects": {
-     "rep": -3,
-     "morale_d1": 4,
-     "morale_d2": 4,
-     "board": -2
-    }
-   },
-   {
-    "text": "Blame the regulations",
-    "effects": {
-     "rep": -1,
-     "fia": 1
-    }
-   }
-  ]
- },
- {
-  "id": "documentary",
-  "when": "any",
-  "category": "MEDIA",
-  "text": "A streaming crew wants full access to the garage for a documentary. Good money, zero privacy.",
-  "options": [
-   {
-    "text": "Let them in",
-    "effects": {
-     "money": 2500,
-     "rep": 5,
-     "morale_d1": -5,
-     "morale_d2": -5
-    }
-   },
-   {
-    "text": "Decline",
-    "effects": {
-     "morale_d1": 3,
-     "morale_d2": 3
-    }
-   }
-  ]
- },
- {
-  "id": "grey_area",
-  "when": "any",
-  "category": "POLITICS",
-  "text": "Your aero chief has found a loophole: a floor edge that flexes at speed. Legal by the letter. Probably.",
-  "options": [
-   {
-    "text": "Run it",
-    "effects": {
-     "car": 3,
-     "fia": 2
-    }
-   },
-   {
-    "text": "Ask the FIA for a clarification first",
-    "effects": {
-     "rep": 3,
-     "car": 1
-    }
-   },
-   {
-    "text": "Bin it",
-    "effects": {
-     "board": -2
-    }
-   }
-  ]
- },
- {
   "id": "protest",
-  "when": "fia",
   "category": "POLITICS",
+  "priority": 85,
+  "if": [
+   "fia>2"
+  ],
+  "why": "FIA attention on your team is at level {fia}.",
   "text": "{rival} have filed a protest against your car. The stewards want to see you.",
   "options": [
    {
     "text": "Fight it with lawyers",
     "effects": {
      "money": -2000,
+     "fia": -2,
      "gamble": {
       "chance": 0.5,
       "win": {
@@ -249,8 +87,7 @@
        "money": -3000,
        "board": -6
       }
-     },
-     "fia": -2
+     }
     }
    },
    {
@@ -281,8 +118,13 @@
  },
  {
   "id": "cost_cap_audit",
-  "when": "cap_high",
   "category": "POLITICS",
+  "priority": 84,
+  "if": [
+   "cap>80",
+   "!audited"
+  ],
+  "why": "You have used {cap}% of the cost cap.",
   "text": "The FIA's auditors are asking pointed questions about your cost cap submission.",
   "options": [
    {
@@ -317,15 +159,494 @@
   ]
  },
  {
-  "id": "rival_alliance",
-  "when": "any",
+  "id": "board_pressure",
+  "category": "BOARD PRESSURE",
+  "priority": 80,
+  "if": [
+   "board<35"
+  ],
+  "why": "Board confidence has fallen to {board}.",
+  "text": "A message from {owner}: results are below target and patience is thin. They want a plan by Monday.",
+  "options": [
+   {
+    "text": "Promise a podium within three races",
+    "effects": {
+     "board": 10,
+     "promise": 3
+    }
+   },
+   {
+    "text": "Ask for investment instead",
+    "effects": {
+     "board": -6,
+     "money": 4000
+    }
+   },
+   {
+    "text": "Blame the drivers",
+    "effects": {
+     "board": 5,
+     "morale_d1": -10,
+     "morale_d2": -10,
+     "rep": -4
+    }
+   }
+  ]
+ },
+ {
+  "id": "cash_crisis",
+  "category": "BOARD PRESSURE",
+  "priority": 76,
+  "if": [
+   "cash<2500"
+  ],
+  "why": "The team has only ${cash}k in the bank.",
+  "text": "The finance director is in your doorway holding a spreadsheet. Payroll is due and the account is nearly empty.",
+  "options": [
+   {
+    "text": "Take an emergency loan from {owner}",
+    "effects": {
+     "money": 5000,
+     "board": -8
+    }
+   },
+   {
+    "text": "Sell a slice of future prize money",
+    "effects": {
+     "money": 3000,
+     "rep": -3
+    }
+   },
+   {
+    "text": "Freeze bonuses and tighten belts",
+    "effects": {
+     "money": 800,
+     "morale_d1": -6,
+     "morale_d2": -6
+    }
+   }
+  ]
+ },
+ {
+  "id": "number_one",
+  "category": "DRIVER DRAMA",
+  "priority": 70,
+  "if": [
+   "ego>69",
+   "no_number_one"
+  ],
+  "why": "{star} has an ego of {ego} and you have no number-one driver.",
+  "text": "{star} wants it in writing: clear number-one status, priority on strategy and upgrades. \"Or I start taking calls from {rival}.\"",
+  "options": [
+   {
+    "text": "Grant number-one status",
+    "effects": {
+     "morale_star": 18,
+     "morale_other": -20,
+     "number_one": "star"
+    }
+   },
+   {
+    "text": "Refuse - equal treatment",
+    "effects": {
+     "morale_star": -16,
+     "morale_other": 8,
+     "rep": 2
+    }
+   },
+   {
+    "text": "Promise it for next season",
+    "effects": {
+     "morale_star": 4,
+     "morale_other": -4,
+     "rep": -3
+    }
+   }
+  ]
+ },
+ {
+  "id": "unhappy_driver",
+  "category": "DRIVER DRAMA",
+  "priority": 68,
+  "if": [
+   "morale<35"
+  ],
+  "why": "{low}'s morale is down to {morale}.",
+  "text": "{low} asks for a word after the debrief. \"I didn't come here to make up the numbers. Tell me why I should stay.\"",
+  "options": [
+   {
+    "text": "Pay a loyalty bonus",
+    "effects": {
+     "money": -1000,
+     "morale_low": 18
+    }
+   },
+   {
+    "text": "Promise the next upgrade goes on their car first",
+    "effects": {
+     "morale_low": 10,
+     "morale_high": -6
+    }
+   },
+   {
+    "text": "\"Results first, then we talk.\"",
+    "effects": {
+     "morale_low": -6,
+     "board": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "win_bonus",
+  "category": "TEAM",
+  "priority": 66,
+  "if": [
+   "win"
+  ],
+  "why": "Your team won the race.",
+  "text": "Champagne everywhere. The mechanics are asking - politely, loudly - about win bonuses.",
+  "options": [
+   {
+    "text": "Pay win bonuses to the whole team",
+    "effects": {
+     "money": -800,
+     "morale_d1": 10,
+     "morale_d2": 10,
+     "rp": 15
+    }
+   },
+   {
+    "text": "Bank the prize money",
+    "effects": {
+     "board": 3,
+     "morale_d1": -4,
+     "morale_d2": -4
+    }
+   },
+   {
+    "text": "Throw a party for the sponsors",
+    "effects": {
+     "money": 500,
+     "rep": 4,
+     "morale_d1": 3,
+     "morale_d2": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "double_dnf",
+  "category": "TEAM",
+  "priority": 65,
+  "if": [
+   "double_dnf"
+  ],
+  "why": "Neither of your cars finished.",
+  "text": "Two wrecked cars come back on flatbeds. The factory is waiting to hear what happens next.",
+  "options": [
+   {
+    "text": "Order a factory all-nighter",
+    "effects": {
+     "money": -700,
+     "car": 1
+    }
+   },
+   {
+    "text": "Apologise to the fans in public",
+    "effects": {
+     "rep": 3,
+     "board": -2
+    }
+   },
+   {
+    "text": "Blame the parts suppliers",
+    "effects": {
+     "rep": -3,
+     "board": 3,
+     "fia": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "no_sponsor_offer",
+  "category": "SPONSORS",
+  "priority": 60,
+  "if": [
+   "no_sponsor",
+   "round>1"
+  ],
+  "why": "Your car has no title sponsor.",
+  "text": "A betting company with a colourful reputation wants the empty space on your engine cover. Today.",
+  "options": [
+   {
+    "text": "Sign the deal",
+    "effects": {
+     "money": 3000,
+     "rep": -5
+    }
+   },
+   {
+    "text": "Hold out for a better brand",
+    "effects": {
+     "rep": 1
+    }
+   },
+   {
+    "text": "Demand double",
+    "effects": {
+     "gamble": {
+      "chance": 0.45,
+      "win": {
+       "money": 4500,
+       "rep": -5
+      },
+      "lose": {
+       "rep": -2
+      }
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "understaffed",
+  "category": "FACTORY",
+  "priority": 58,
+  "if": [
+   "engineers<3"
+  ],
+  "why": "Only {engineers} engineers work in your office.",
+  "text": "Half the desks in the design office are empty. The local university offers its best graduates - for a price.",
+  "options": [
+   {
+    "text": "Take the graduate programme",
+    "effects": {
+     "money": -300,
+     "rp": 25
+    }
+   },
+   {
+    "text": "Pay a headhunter for contractors",
+    "effects": {
+     "money": -1200,
+     "rp": 60
+    }
+   },
+   {
+    "text": "Make do",
+    "effects": {
+     "board": -2
+    }
+   }
+  ]
+ },
+ {
+  "id": "wet_data",
+  "category": "FACTORY",
+  "priority": 50,
+  "if": [
+   "wet",
+   "points"
+  ],
+  "why": "You scored points in a wet race.",
+  "text": "The tyre supplier noticed your pace in the rain and offers their private wet-weather data.",
+  "options": [
+   {
+    "text": "Buy the data",
+    "effects": {
+     "money": -600,
+     "car": 1
+    }
+   },
+   {
+    "text": "Swap it for your own data",
+    "effects": {
+     "rp": 30,
+     "rep": -1
+    }
+   },
+   {
+    "text": "Decline",
+    "effects": {}
+   }
+  ]
+ },
+ {
+  "id": "research_windfall",
+  "category": "FACTORY",
+  "priority": 48,
+  "if": [
+   "rp>250"
+  ],
+  "why": "You are sitting on {rp} unspent research points.",
+  "text": "{rival} have heard your engineers have ideas to spare. They want to buy some.",
+  "options": [
+   {
+    "text": "Sell 100 research points",
+    "effects": {
+     "rp": -100,
+     "money": 2500
+    }
+   },
+   {
+    "text": "Trade 60 points for their wind-tunnel time",
+    "effects": {
+     "rp": -60,
+     "tunnel": 2
+    }
+   },
+   {
+    "text": "Keep everything",
+    "effects": {}
+   }
+  ]
+ },
+ {
+  "id": "documentary",
+  "category": "MEDIA",
+  "priority": 46,
+  "if": [
+   "podium",
+   "!win"
+  ],
+  "why": "Your team finished on the podium.",
+  "text": "A streaming crew wants full access to the garage for a documentary after that podium. Good money, zero privacy.",
+  "options": [
+   {
+    "text": "Let them in",
+    "effects": {
+     "money": 2500,
+     "rep": 5,
+     "morale_d1": -5,
+     "morale_d2": -5
+    }
+   },
+   {
+    "text": "Decline",
+    "effects": {
+     "morale_d1": 3,
+     "morale_d2": 3
+    }
+   }
+  ]
+ },
+ {
+  "id": "overperform",
+  "category": "BOARD PRESSURE",
+  "priority": 44,
+  "if": [
+   "behind<-2",
+   "round>3"
+  ],
+  "why": "You are P{position}; the owners expected P{expect}.",
+  "text": "{owner} can smell a title. They offer more money now - if you promise them a podium soon.",
+  "options": [
+   {
+    "text": "Take the investment",
+    "effects": {
+     "money": 4000,
+     "promise": 3
+    }
+   },
+   {
+    "text": "Ask for patience instead",
+    "effects": {
+     "board": 4
+    }
+   },
+   {
+    "text": "Ask for a new simulator",
+    "effects": {
+     "rp": 40,
+     "board": -2
+    }
+   }
+  ]
+ },
+ {
+  "id": "owner_cost_cut",
+  "category": "BOARD PRESSURE",
+  "priority": 43,
+  "if": [
+   "behind>2",
+   "round>3"
+  ],
+  "why": "You are P{position}; the owners expected P{expect}.",
+  "text": "{owner} wants a 10% cost cut. \"The spreadsheet doesn't care about lap time.\"",
+  "options": [
+   {
+    "text": "Agree and trim the factory budget",
+    "effects": {
+     "board": 8,
+     "money": 1500,
+     "car": -1
+    }
+   },
+   {
+    "text": "Push back hard",
+    "effects": {
+     "board": -8,
+     "rep": 3
+    }
+   },
+   {
+    "text": "Offer a smaller cut",
+    "effects": {
+     "board": 2,
+     "money": 500
+    }
+   }
+  ]
+ },
+ {
+  "id": "grey_area",
   "category": "POLITICS",
+  "priority": 40,
+  "if": [
+   "engineers>3",
+   "fia<2"
+  ],
+  "why": "You have {engineers} engineers and the FIA is not watching you.",
+  "text": "Your aero chief has found a loophole: a floor edge that flexes at speed. Legal by the letter. Probably.",
+  "options": [
+   {
+    "text": "Run it",
+    "effects": {
+     "car": 3,
+     "fia": 2
+    }
+   },
+   {
+    "text": "Ask the FIA for a clarification first",
+    "effects": {
+     "rep": 3,
+     "car": 1
+    }
+   },
+   {
+    "text": "Bin it",
+    "effects": {
+     "board": -2
+    }
+   }
+  ]
+ },
+ {
+  "id": "rival_alliance",
+  "category": "POLITICS",
+  "priority": 35,
+  "if": [
+   "rep>55"
+  ],
+  "why": "Your reputation is {rep}.",
   "text": "The principal of {rival} proposes a quiet alliance: vote together on next year's rules and share wind-tunnel data.",
   "options": [
    {
     "text": "Shake on it",
     "effects": {
-     "car": 1,
+     "tunnel": 1,
      "rep": -2,
      "fia": 1
     }
@@ -346,36 +667,88 @@
   ]
  },
  {
-  "id": "poach",
-  "when": "any",
-  "category": "DRIVER DRAMA",
-  "text": "{rival} have made {d1} an offer. Matching it means a raise.",
+  "id": "press_conference",
+  "category": "MEDIA",
+  "priority": 30,
+  "if": [
+   "no_points"
+  ],
+  "why": "Your team scored no points.",
+  "text": "Press conference. A reporter asks whether {rival} are simply a better-run team than yours.",
   "options": [
    {
-    "text": "Give a raise",
+    "text": "Stay gracious",
     "effects": {
-     "salary_d1": 0.15,
-     "morale_d1": 10
+     "rep": 4
     }
    },
    {
-    "text": "Call the bluff",
+    "text": "Take a swing at {rival}",
     "effects": {
-     "morale_d1": -12
+     "rep": -3,
+     "morale_d1": 4,
+     "morale_d2": 4,
+     "board": -2
     }
    },
    {
-    "text": "Sell the dream, not the money",
+    "text": "Blame the regulations",
     "effects": {
-     "gamble": {
-      "chance": 0.5,
-      "win": {
-       "morale_d1": 6
-      },
-      "lose": {
-       "morale_d1": -14
-      }
-     }
+     "rep": -1,
+     "fia": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "tunnel_help",
+  "category": "POLITICS",
+  "priority": 26,
+  "if": [
+   "position>6",
+   "round>2"
+  ],
+  "why": "You are P{position} in the championship.",
+  "text": "The FIA offers the teams at the back extra wind-tunnel time to close up the field.",
+  "options": [
+   {
+    "text": "Accept the extra runs",
+    "effects": {
+     "tunnel": 2
+    }
+   },
+   {
+    "text": "Sell the slot to {rival}",
+    "effects": {
+     "money": 1500,
+     "rep": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "fan_day",
+  "category": "MEDIA",
+  "priority": 25,
+  "if": [
+   "rep<40"
+  ],
+  "why": "Your reputation is only {rep}.",
+  "text": "Marketing wants an open day at the factory to win some fans back.",
+  "options": [
+   {
+    "text": "Host it",
+    "effects": {
+     "money": -400,
+     "rep": 6,
+     "morale_d1": 3,
+     "morale_d2": 3
+    }
+   },
+   {
+    "text": "Skip it",
+    "effects": {
+     "rep": -2
     }
    }
   ]

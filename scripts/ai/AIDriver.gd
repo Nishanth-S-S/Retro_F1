@@ -50,7 +50,11 @@ func setup(vehicle: VehicleController, racing_line: RacingLine, profile: Diction
 	_rng.seed = seed_value
 	# Pace decides how much of the car's grip the driver dares to use.
 	var grip_scale := lerpf(0.8, 1.0, clampf((pace - 0.8) / 0.2, 0.0, 1.0))
+	# Wet track: less grip for everyone, and less still for drivers who dislike the rain.
+	grip_scale *= float(profile.get("track_grip", 1.0))
 	var brake_scale := lerpf(0.72, 0.98, braking_accuracy)
+	if float(profile.get("track_grip", 1.0)) < 1.0:
+		brake_scale *= 0.88          # brake earlier on a wet track
 	_profile = line.speed_profile(car.physics.stats, car.physics_config, grip_scale, brake_scale)
 	# Poor tire managers scrub and overheat their tires.
 	var abuse := lerpf(1.3, 0.85, tire_management)

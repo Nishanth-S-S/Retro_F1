@@ -1,5 +1,6 @@
 extends Control
-## Save slot select. Each slot is a separate profile: its own career, garage and records.
+## Career select. Each of the six saves is one career: continue it, or start a new one in
+## an empty slot. The garage and records travel with the career.
 
 var _delete_mode := false
 var _grid: GridContainer
@@ -12,33 +13,31 @@ func _ready() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 70)
+		margin.add_theme_constant_override("margin_" + side, 50)
 	margin.add_theme_constant_override("margin_top", 14)
 	margin.add_theme_constant_override("margin_bottom", 14)
 	add_child(margin)
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
-	root.add_child(UIKit.title_bar("SELECT SAVE SLOT"))
-	var outer := UIKit.panel(Color(1, 1, 1, 0.0), Color.TRANSPARENT)
-	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(outer)
+	root.add_child(UIKit.title_bar("CAREERS"))
 	_grid = GridContainer.new()
 	_grid.columns = 3
+	_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_grid.add_theme_constant_override("h_separation", 14)
 	_grid.add_theme_constant_override("v_separation", 14)
-	outer.add_child(_grid)
+	root.add_child(_grid)
 	var foot := HBoxContainer.new()
 	root.add_child(foot)
 	var back := UIKit.button("<-", 26)
-	back.custom_minimum_size = Vector2(110, 60)
+	back.custom_minimum_size = Vector2(120, 66)
 	back.pressed.connect(func() -> void: SceneManager.goto("menu"))
 	foot.add_child(back)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(gap)
-	_options = UIKit.button("DELETE A SAVE", 16)
-	_options.custom_minimum_size = Vector2(240, 60)
+	_options = UIKit.button("DELETE", 18)
+	_options.custom_minimum_size = Vector2(240, 66)
 	_options.pressed.connect(func() -> void:
 		_delete_mode = not _delete_mode
 		_rebuild())
@@ -54,40 +53,49 @@ func _rebuild() -> void:
 	for child in _grid.get_children():
 		_grid.remove_child(child)
 		child.queue_free()
-	_options.text = "CANCEL DELETE" if _delete_mode else "DELETE A SAVE"
+	_options.text = "CANCEL" if _delete_mode else "DELETE"
 	for i in range(1, SaveManager.SLOT_COUNT + 1):
 		var data := SaveManager.slot_data(i)
 		if i == SaveManager.slot:
 			data = GameManager.profile
-		var current := i == SaveManager.slot
-		var frame := Frame.make("SAVE %d%s" % [i, "  (IN USE)" if current else ""])
+		var career: Dictionary = data.get("career", {})
+		var running: bool = not career.is_empty() and career.get("active", false)
+		var frame := Frame.make("CAREER %d" % i, 8)
 		frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_grid.add_child(frame)
-		var career: Dictionary = data.get("career", {})
-		var text := "New Game"
-		var team: Dictionary = {}
-		if not data.is_empty():
-			text = "FREE DRIVE  %s" % UIKit.money(float(data.get("money", 0)))
-			if not career.is_empty() and career.get("active", false):
-				team = Career.team(str(career["team"]))
-				text = "[%s] S%d R%d  %s" % [team.get("short", "?"), int(career["season"]), int(career["round"]) + 1, UIKit.money(float(data.get("money", 0)))]
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		frame.body.add_child(row)
-		if not team.is_empty():
-			var t := team
-			row.add_child(Art.make(Vector2(52, 52), func(a: Control) -> void: PixelArt.draw_logo(a, Rect2(Vector2.ZERO, a.size), t)))
-		var b := UIKit.button(("DELETE: " + text) if _delete_mode and not data.is_empty() else text, 15, _delete_mode and not data.is_empty())
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(0, 60)
-		b.disabled = _delete_mode and (data.is_empty() or current)
+		frame.body.alignment = BoxContainer.ALIGNMENT_CENTER
+		if running:
+			var team := Career.team(str(career["team"]))
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 12)
+			frame.body.add_child(row)
+			row.add_child(Art.make(Vector2(84, 84), func(a: Control) -> void: PixelArt.draw_logo(a, Rect2(Vector2.ZERO, a.size), team)))
+			var info := VBoxContainer.new()
+			info.add_theme_constant_override("separation", 2)
+			row.add_child(info)
+			info.add_child(UIKit.label(str(team.get("name", "?")).to_upper(), 20))
+			info.add_child(UIKit.label("SEASON %d  ·  ROUND %d" % [int(career["season"]), int(career["round"]) + 1], 16, UIKit.TEXT_DIM))
+			info.add_child(UIKit.label(UIKit.money(float(data.get("money", 0))), 18, UIKit.GOOD))
+		else:
+			var empty := UIKit.label("EMPTY", 26, UIKit.TEXT_DIM)
+			empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			frame.body.add_child(empty)
+		var text := "CONTINUE" if running else "NEW CAREER"
+		if _delete_mode:
+			text = "DELETE"
+		var b := UIKit.button(text, 22, running or _delete_mode)
+		b.custom_minimum_size = Vector2(0, 70)
+		b.disabled = _delete_mode and not running
 		b.pressed.connect(func() -> void:
 			if _delete_mode:
-				SaveManager.delete_slot(i)
+				if i == SaveManager.slot:
+					GameManager.reset_profile()
+				else:
+					SaveManager.delete_slot(i)
 				_delete_mode = false
 				_rebuild()
 			else:
 				GameManager.switch_slot(i)
-				SceneManager.goto("menu"))
-		row.add_child(b)
+				SceneManager.goto("career" if Career.active() else "career_start"))
+		frame.body.add_child(b)

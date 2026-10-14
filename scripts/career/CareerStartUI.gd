@@ -42,7 +42,7 @@ func _fresh(title: String, back: Callable) -> VBoxContainer:
 
 
 func _show_teams() -> void:
-	var root := _fresh("CHOOSE YOUR TEAM", func() -> void: SceneManager.goto("menu"))
+	var root := _fresh("CHOOSE YOUR TEAM", func() -> void: SceneManager.goto("saves"))
 	root.add_child(UIKit.label("You are the new team principal. Bigger teams have more money and a faster car - and owners who expect trophies.", 13, UIKit.TEXT_DIM))
 	var grid := GridContainer.new()
 	grid.columns = 4
@@ -101,7 +101,7 @@ func _show_manager() -> void:
 	row.add_child(portrait)
 	var form := VBoxContainer.new()
 	form.alignment = BoxContainer.ALIGNMENT_CENTER
-	form.add_theme_constant_override("separation", 10)
+	form.add_theme_constant_override("separation", 7)
 	row.add_child(form)
 	form.add_child(UIKit.label("TEAM PRINCIPAL  ·  %s" % str(team["name"]).to_upper(), 14, UIKit.ACCENT))
 	var name_edit := LineEdit.new()
@@ -111,7 +111,9 @@ func _show_manager() -> void:
 	name_edit.add_theme_font_size_override("font_size", 20)
 	name_edit.text_changed.connect(func(text: String) -> void: _name = text.to_upper())
 	form.add_child(name_edit)
-	var options := {"skin": ["SKIN", PixelArt.SKIN.size()], "hair": ["HAIR", PixelArt.HAIR_STYLES.size()], "hair_color": ["HAIR COLOUR", PixelArt.HAIR_COLORS.size()], "accessory": ["EXTRA", PixelArt.ACCESSORIES.size()], "outfit": ["OUTFIT", PixelArt.OUTFITS.size()]}
+	if not _look.has("face"):
+		_look["face"] = 0
+	var options := {"face": ["FACE", PixelArt.FACES.size()], "skin": ["SKIN", PixelArt.SKIN.size()], "hair": ["HAIR", PixelArt.HAIR_STYLES.size()], "hair_color": ["HAIR COLOUR", PixelArt.HAIR_COLORS.size()], "accessory": ["EXTRA", PixelArt.ACCESSORIES.size()], "outfit": ["OUTFIT", PixelArt.OUTFITS.size()]}
 	for key: String in options:
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 8)
@@ -123,7 +125,9 @@ func _show_manager() -> void:
 		var refresh := func() -> void:
 			var idx := int(_look[key])
 			var text := str(idx + 1)
-			if key == "hair":
+			if key == "face":
+				text = PixelArt.FACES[idx]
+			elif key == "hair":
 				text = PixelArt.HAIR_STYLES[idx]
 			elif key == "accessory":
 				text = PixelArt.ACCESSORIES[idx]
@@ -133,7 +137,7 @@ func _show_manager() -> void:
 			portrait.queue_redraw()
 		for step: int in [-1, 1]:
 			var b := UIKit.button("<" if step < 0 else ">", 18)
-			b.custom_minimum_size = Vector2(56, 44)
+			b.custom_minimum_size = Vector2(56, 40)
 			b.pressed.connect(func() -> void:
 				_look[key] = posmod(int(_look[key]) + step, count)
 				refresh.call())

@@ -15,6 +15,11 @@ const DEFAULT_SETTINGS := {
 	"steering_sensitivity": 1.0, "steering_smoothing": 0.5,
 	"abs": 1, "traction_control": 1, "automatic": true, "racing_line": true,
 	"camera_rotation": true, "control_opacity": 0.6, "stability_assist": true,
+	# Difficulty: 0-4 = ROOKIE..LEGEND (see Difficulty.gd); the diff_* values belong to the mode. Default PRO.
+	"difficulty": 2, "diff_ai": 0.67, "diff_aggression": 0.55, "diff_steer_assist": 0.0,
+	"diff_brake_assist": 0.0, "diff_grip": 0.0, "diff_damage": 0.5,
+	# Free-drive weather: 0 = by track, 1 = dry, 2 = light rain, 3 = heavy rain.
+	"free_weather": 0,
 }
 
 var economy: Dictionary = {}
@@ -29,6 +34,8 @@ var last_results: Dictionary = {}
 var active_mission := -1
 ## Set while a career grand prix is being driven by the player (see Career.prepare_drive).
 var career_race: Dictionary = {}
+## Weather of the on-track session being started: 0 dry, 1 light rain, 2 heavy rain.
+var session_weather := 0
 
 
 func _ready() -> void:
@@ -142,6 +149,7 @@ func load_profile() -> void:
 
 func save() -> void:
 	profile["car_setup"] = setup.to_dict()
+	Career.sync_active_car()
 	SaveManager.save_profile(profile)
 
 
@@ -259,6 +267,14 @@ func is_challenge_done(id: String) -> bool:
 func start_free_session(mode: String) -> void:
 	active_mission = -1
 	career_race = {}
+	var choice := int(setting("free_weather"))
+	if choice == 0:
+		# Left to the track's climate.
+		var roll := randf()
+		var rain := TrackTheme.rain_chance(track_id)
+		session_weather = 2 if roll < rain * 0.35 else (1 if roll < rain else 0)
+	else:
+		session_weather = choice - 1
 	start_session(mode)
 
 

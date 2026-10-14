@@ -25,6 +25,8 @@ var tc_level := 1
 var abs_level := 1
 ## 0 = off, 1 = on. Helps catch slides without steering the car for the driver.
 var stability_assist := 0.0
+## Multiplies all tire grip: wet weather lowers it, the difficulty grip aid raises it.
+var grip_scale := 1.0
 var _rear_slide := 0.0
 
 # --- outputs of the latest step (read by controller, HUD, telemetry, debug overlay)
@@ -212,8 +214,11 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 func _surface_grip(surface: int, curb_compliance: float) -> float:
 	if surface == VehiclePhysicsConfig.Surface.CURB:
 		# Compliant suspension rides curbs; stiff suspension skips across them.
-		return lerpf(config.surface_grip[surface] - 0.09, 1.0, curb_compliance)
-	return config.surface_grip[surface]
+		return lerpf(config.surface_grip[surface] - 0.09, 1.0, curb_compliance) * grip_scale
+	if surface >= VehiclePhysicsConfig.Surface.GRASS:
+		# Grass and gravel are already slippery; rain must not make a spin unrecoverable.
+		return config.surface_grip[surface] * maxf(grip_scale, 0.9)
+	return config.surface_grip[surface] * grip_scale
 
 
 ## Shares one grip budget between longitudinal and lateral demand.

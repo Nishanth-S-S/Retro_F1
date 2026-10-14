@@ -1,6 +1,7 @@
 class_name RaceReport
 extends RefCounted
-## The chequered-flag summary shown after any career race (driven, pit wall or quick sim).
+## The chequered-flag summary after any career race: where your two cars finished, what
+## the weekend earned, and one button back to HQ.
 
 
 static func show(parent: Control, report: Dictionary) -> void:
@@ -15,41 +16,49 @@ static func show(parent: Control, report: Dictionary) -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.add_child(center)
 	var panel := UIKit.panel(UIKit.PANEL, UIKit.LINE)
-	panel.custom_minimum_size = Vector2(800, 0)
+	panel.custom_minimum_size = Vector2(760, 0)
 	center.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
-	box.add_child(Art.make(Vector2(0, 20), func(a: Control) -> void: PixelArt.draw_checker(a, Rect2(Vector2.ZERO, a.size), 10.0, Color.WHITE, UIKit.INK)))
-	box.add_child(UIKit.title_bar("CHEQUERED FLAG", 50.0))
-	box.add_child(UIKit.label(str(report["race"]).to_upper(), 12, UIKit.TEXT_DIM))
-	var headline := PackedStringArray()
+	box.add_child(UIKit.title_bar(str(report["race"]), 54.0))
 	for m: Dictionary in report["mine"]:
-		headline.append("%s %s" % [str(m["name"]).get_slice(" ", 1).to_upper(), "DNF" if m["dnf"] else "P%d" % int(m["position"])])
-	box.add_child(UIKit.label("    ".join(headline), 28))
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 30)
-	box.add_child(cols)
-	var top := VBoxContainer.new()
-	top.add_theme_constant_override("separation", 0)
-	cols.add_child(top)
-	var rows: Array = report["top"]
-	for i in rows.size():
-		var r: Dictionary = rows[i]
-		top.add_child(UIKit.label("%2d  %-20s %s  %2d" % [i + 1, str(r["name"]).to_upper().left(20), r["short"], Career.POINTS[i]], 13, UIKit.BAD if r["is_player"] else UIKit.TEXT))
-	var money := VBoxContainer.new()
-	money.add_theme_constant_override("separation", 2)
-	cols.add_child(money)
-	for info: Array in [["PRIZE MONEY", int(report["prize"])], ["SPONSOR", int(report["sponsor"])], ["DRIVER SALARIES", -int(report["salaries"])], ["FACTORY UPKEEP", -int(report["upkeep"])]]:
-		money.add_child(UIKit.label("%-16s %s" % [info[0], UIKit.money(info[1])], 13, UIKit.GOOD if int(info[1]) >= 0 else UIKit.BAD))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		box.add_child(row)
+		var result := "P%d" % int(m["position"])
+		var color := UIKit.GOOD if int(m["points"]) > 0 else UIKit.TEXT
+		if m.get("dsq", false):
+			result = "DSQ"
+			color = UIKit.BAD
+		elif m["dnf"]:
+			result = "DNF"
+			color = UIKit.BAD
+		var place := UIKit.label(result, 44, color)
+		place.custom_minimum_size = Vector2(150, 0)
+		row.add_child(place)
+		var who := VBoxContainer.new()
+		who.alignment = BoxContainer.ALIGNMENT_CENTER
+		who.add_theme_constant_override("separation", 0)
+		row.add_child(who)
+		who.add_child(UIKit.label(str(m["name"]).to_upper(), 24))
+		var note := "+%d POINTS" % int(m["points"])
+		if m.get("dsq", false):
+			# An illegal car is thrown out however well it was driven.
+			note = "ILLEGAL CAR: %s" % str(m.get("dsq_reason", "FAILED THE FIA CHECK"))
+		who.add_child(UIKit.label(note, 15, UIKit.BAD if m.get("dsq", false) else UIKit.TEXT_DIM))
+	var net := int(report["prize"]) + int(report["sponsor"]) - int(report["salaries"]) - int(report["upkeep"]) - int(report.get("staff", 0))
 	var change := int(report["board_change"])
-	money.add_child(UIKit.spacer(6))
-	money.add_child(UIKit.label("BOARD CONFIDENCE %+d  (now %d)" % [change, int(report["board"])], 14, UIKit.GOOD if change >= 0 else UIKit.BAD))
+	var totals := HBoxContainer.new()
+	totals.add_theme_constant_override("separation", 40)
+	box.add_child(totals)
+	totals.add_child(UIKit.label("%s%s" % ["+" if net >= 0 else "", UIKit.money(net)], 26, UIKit.GOOD if net >= 0 else UIKit.BAD))
+	totals.add_child(UIKit.label("BOARD %+d" % change, 26, UIKit.GOOD if change >= 0 else UIKit.BAD))
+	totals.add_child(UIKit.label("+%d RESEARCH" % int(report.get("research", 0)), 26, UIKit.ACCENT))
 	if report.has("season"):
 		var s: Dictionary = report["season"]
-		money.add_child(UIKit.label("SEASON OVER: P%d, prize %s" % [int(s["position"]), UIKit.money(s["payout"])], 14, UIKit.ACCENT))
-	money.add_child(UIKit.label("Check your phone - the paddock has opinions.", 12, UIKit.TEXT_DIM))
-	var done := UIKit.button("BACK TO HQ", 18, true)
-	done.custom_minimum_size = Vector2(0, 56)
+		box.add_child(UIKit.label("SEASON OVER  ·  P%d  ·  +%s" % [int(s["position"]), UIKit.money(s["payout"])], 22, UIKit.HOT))
+	var done := UIKit.button("CONTINUE", 22, true)
+	done.custom_minimum_size = Vector2(0, 66)
 	done.pressed.connect(func() -> void: SceneManager.goto("career"))
 	box.add_child(done)

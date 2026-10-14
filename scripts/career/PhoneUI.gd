@@ -142,8 +142,9 @@ func _build_messages() -> void:
 			actions.add_theme_constant_override("separation", 8)
 			col.add_child(actions)
 			for accept: bool in [true, false]:
-				var b := UIKit.button("ACCEPT" if accept else "DECLINE", 13, accept)
-				b.custom_minimum_size = Vector2(130, 42)
+				# Offers can name their own buttons (a poaching approach is "release" or "counter").
+				var b := UIKit.button(str(m["offer"].get("yes" if accept else "no", "ACCEPT" if accept else "DECLINE")), 13, accept)
+				b.custom_minimum_size = Vector2(200 if m["offer"].has("yes") else 130, 42)
 				b.pressed.connect(func() -> void:
 					_note.text = Career.resolve_offer(i, accept)
 					AudioManager.play("cash" if accept else "click", -8.0)

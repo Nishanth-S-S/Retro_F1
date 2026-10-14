@@ -19,6 +19,34 @@ const DEPARTMENTS := {
 }
 const POINTS: PackedInt32Array = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const SEASON_PRIZE: PackedInt32Array = [30000, 26000, 23000, 20000, 17000, 15000, 13000, 11000, 9000, 8000, 7000]
+const MAX_CARS := 4
+const NEW_CAR_COST := 2500           # $k to build another chassis (counts against the cost cap)
+const ENGINEER_SLOTS := 5            # a full engineering office
+const MAX_RP := 400                  # unspent research points above this are lost
+const TUNNEL_BONUS := 2.5            # car rating from a fully correlated wind-tunnel model
+const MATERIAL_BONUS := 0.4          # car rating per material tier
+const MATERIAL_COSTS: PackedInt32Array = [40, 80, 140, 220]
+const ENGINEER_SPECS := {
+	"aero": {"name": "AERODYNAMICIST", "short": "AERO", "note": "Wind-tunnel runs teach more. Cheaper aero materials."},
+	"power": {"name": "ENGINE SPECIALIST", "short": "ENGINE", "note": "Cheaper power-unit materials."},
+	"chassis": {"name": "CHASSIS DESIGNER", "short": "CHASSIS", "note": "Cheaper monocoque, brake and suspension materials."},
+	"data": {"name": "DATA ANALYST", "short": "DATA", "note": "More research points every week."},
+	"strategy": {"name": "STRATEGIST", "short": "STRATEGY", "note": "Faster pit stops in simulated races."},
+}
+## What research points buy: a material tier per area of each car.
+const MATERIAL_AREAS := {
+	"chassis": {"name": "MONOCOQUE", "spec": "chassis", "tiers": ["STEEL TUBE", "ALUMINIUM", "CARBON FIBRE", "CARBON-TITANIUM", "GRAPHENE WEAVE"]},
+	"aero": {"name": "AERO SURFACES", "spec": "aero", "tiers": ["FIBREGLASS", "PRE-PREG CARBON", "HIGH-MODULUS CARBON", "FLEX-TUNED CARBON", "ACTIVE SKIN"]},
+	"power": {"name": "POWER UNIT", "spec": "power", "tiers": ["CAST IRON", "ALUMINIUM ALLOY", "TITANIUM VALVES", "INCONEL EXHAUST", "CERAMIC MATRIX"]},
+	"brakes": {"name": "BRAKES", "spec": "chassis", "tiers": ["STEEL DISCS", "VENTED STEEL", "CARBON-CERAMIC", "CARBON-CARBON", "CARBON-SILICON"]},
+	"suspension": {"name": "SUSPENSION", "spec": "chassis", "tiers": ["STEEL ARMS", "CHROMOLY", "TITANIUM", "CARBON WISHBONES", "METAL MATRIX"]},
+}
+const TRACK_TYPES := {"falcon_ridge": "TECHNICAL", "tempo_park": "HIGH SPEED", "port_azure": "STREET", "silver_lake": "FAST SWEEPS", "nordhaven": "FOREST ROAD"}
+## Seconds per lap a driver gains at home, on a favourite kind of track, or loses on a bogey one.
+const HOME_GAIN := 0.25
+const TYPE_GAIN := 0.15
+const BALANCE_NAMES: PackedStringArray = ["A PLANTED, UNDERSTEERY CAR", "A NEUTRAL CAR", "A POINTY, OVERSTEERY CAR"]
+const AERO_NAMES: PackedStringArray = ["LOW DRAG / TOP SPEED", "A BALANCED WING LEVEL", "HIGH DOWNFORCE"]
 const FIRST_NAMES: PackedStringArray = ["Teo", "Arlo", "Niko", "Juno", "Rafa", "Emil", "Kai", "Luca", "Mika", "Dario", "Yuki", "Sami", "Otto", "Remy", "Zane", "Ines", "Mara", "Tavi"]
 const LAST_NAMES: PackedStringArray = ["Varga", "Okafor", "Brandt", "Ito", "Delacroix", "Whitlock", "Nilsen", "Moreau", "Kowal", "Santoro", "Hale", "Rahim", "Lund", "Pereira", "Novak", "Finch", "Aoki", "Castel"]
 
@@ -30,6 +58,7 @@ var rd_tiers: Array = []
 var _base_drivers: Array = []
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _rng := RandomNumberGenerator.new()
+var _stats_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -63,6 +92,15 @@ func active() -> bool:
 		# Careers saved before the phone existed get their paddock filled in.
 		c["inbox"] = []
 		_generate_people()
+	if c.has("regs") and not c["regs"].has("v"):
+		# Early saves capped the wings below the slider's maximum from day one, which got
+		# cars with full wing disqualified every race. Season one has no wing limit.
+		c["regs"]["v"] = 2
+		if int(c["season"]) == 1:
+			c["regs"]["max_wing"] = CarSetup.WING_ANGLE_MAX
+	if not c.has("cars"):
+		# ...and careers from before engineers, multiple cars and FIA rules get those.
+		_init_team_extras()
 	return true
 
 
@@ -78,7 +116,10 @@ func my_team() -> Dictionary:
 
 
 func driver(id: String) -> Dictionary:
-	return state()["drivers"].get(id, {})
+	var d: Dictionary = state()["drivers"].get(id, {})
+	if not d.is_empty() and not d.has("wet"):
+		_ensure_traits(d)
+	return d
 
 
 func lineup() -> Array:
@@ -134,6 +175,7 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 	_generate_juniors()
 	_generate_people()
 	_add_starting_reserve()
+	_init_team_extras()
 	_refresh_sponsor_offers()
 	_sync_unlocks()
 	add_message("owner", "Welcome aboard. The target is simple: %s. Don't make me regret this." % board_target_text().to_lower())
@@ -192,9 +234,19 @@ func driver_overall(d: Dictionary) -> int:
 	return int(round(float(d["pace"]) * 0.5 + float(d["racecraft"]) * 0.25 + float(d["consistency"]) * 0.25))
 
 
-## 45-90 score for the car the player has built in the garage.
-func build_rating() -> float:
-	var s := CarStats.compute(GameManager.setup, _config)
+## Derived numbers for a build, cached because the hub asks for them constantly.
+func setup_stats(setup: CarSetup) -> CarStats:
+	var key := JSON.stringify(setup.to_dict())
+	if not _stats_cache.has(key):
+		if _stats_cache.size() > 48:
+			_stats_cache.clear()
+		_stats_cache[key] = CarStats.compute(setup, _config)
+	return _stats_cache[key]
+
+
+## 45-90 score for a build (the one in the garage when none is given).
+func build_rating(setup: CarSetup = null) -> float:
+	var s := setup_stats(setup if setup else GameManager.setup)
 	if not s.valid:
 		return 40.0
 	var cornering := s.mech_grip_g + s.downforce_200 / (s.mass * VehiclePhysicsConfig.GRAVITY) * 0.5
@@ -203,13 +255,15 @@ func build_rating() -> float:
 	return 45.0 + 45.0 * score
 
 
+## A team's car rating. For your own team it is the average of the cars your race drivers use.
 func car_rating(team_id: String) -> float:
 	var base: float = state()["team_cars"].get(team_id, 70.0)
 	if team_id != state()["team"]:
 		return base
-	# Your car = the team's baseline, plus what you built in the garage, plus the factory.
-	var f: Dictionary = state()["factory"]
-	return clampf(base + (build_rating() - 60.0) * 0.6 + (int(f["aero"]) + int(f["power"])) * 1.5 + float(state()["car_bonus"]), 40.0, 99.0)
+	var total := 0.0
+	for id: String in lineup():
+		total += car_overall(car_for(id))
+	return total / maxf(lineup().size(), 1)
 
 
 func team_drivers(team_id: String) -> Array:
@@ -279,16 +333,53 @@ func scout(id: String) -> bool:
 	var d := driver(id)
 	if d.is_empty() or scout_level(d) >= 3 or GameManager.money() < scout_cost(d):
 		return false
+	if lineup().has(id) or reserves().has(id):
+		return false                 # too late: reports are written before the contract, not after
 	GameManager.add_money(-scout_cost(d))
 	d["scout_level"] = scout_level(d) + 1
 	GameManager.save()
 	return true
 
 
-## Signs a market driver into the seat held by `replace_id`. Returns "" or the reason it failed.
+## What it costs to sign a driver: an academy fee for juniors, nothing for a free agent,
+## and the release clause in their contract for anyone racing for a rival.
+func driver_buyout(d: Dictionary) -> int:
+	if str(d.get("team", "")) == "":
+		return int(d.get("buyout", 0))
+	return release_clause(d)
+
+
+## The buyout written into a contracted driver's deal.
+func release_clause(d: Dictionary) -> int:
+	return int(float(d["salary"]) * 0.6 + maxf(0.0, driver_overall(d) - 65.0) * 380.0)
+
+
+## Rival drivers you could buy out of their contracts, best first.
+func poach_targets() -> Array:
+	var out: Array = []
+	for id: String in state()["drivers"]:
+		var d := driver(id)
+		if str(d["team"]) != "" and str(d["team"]) != str(state()["team"]) and not d.get("hidden", false) and not lineup().has(id) and not reserves().has(id):
+			out.append(d)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return driver_overall(a) > driver_overall(b))
+	return out
+
+
+## Reputation your team needs before a contracted driver will even take the call.
+func poach_reputation(d: Dictionary) -> int:
+	return clampi(driver_overall(d) - 26, 30, 80)
+
+
+## Signs a driver into the seat held by `replace_id` ("reserve" = the bench). Free agents and
+## juniors come from the market; a driver under contract elsewhere is poached by paying the
+## release clause. Returns "" or the reason it failed.
 func sign_driver(id: String, replace_id: String) -> String:
 	var d := driver(id)
-	var fee := int(d.get("buyout", 0))
+	var from_team := str(d.get("team", ""))
+	var poached := from_team != "" and from_team != str(state()["team"])
+	var fee := driver_buyout(d)
+	if poached and int(state()["reputation"]) < poach_reputation(d):
+		return "%s won't leave %s for you yet (needs reputation %d)." % [d["name"], team(from_team)["short"], poach_reputation(d)]
 	if replace_id == "reserve" and reserves().size() >= MAX_RESERVES:
 		return "Both reserve seats are taken."
 	if salary_total(replace_id, id) > SALARY_CAP:
@@ -296,6 +387,12 @@ func sign_driver(id: String, replace_id: String) -> String:
 	if GameManager.money() < fee:
 		return "Not enough cash for the %s buyout." % money_text(fee)
 	GameManager.add_money(-fee)
+	# The full card (potential, conditions, car taste) only exists if the scouts finished
+	# their report before the contract was signed.
+	d["known"] = scout_level(d) >= 3
+	if poached:
+		state()["reputation"] = maxi(0, int(state()["reputation"]) - 1)
+		add_message("boss_%s" % from_team, "You triggered %s's release clause. %s wired, lawyers satisfied. I won't forget this." % [str(d["name"]).get_slice(" ", 1), money_text(fee)])
 	if replace_id == "reserve":
 		d["team"] = state()["team"]
 		d["junior"] = false
@@ -303,6 +400,8 @@ func sign_driver(id: String, replace_id: String) -> String:
 		reserves().append(id)
 		if not state()["points"].has(id):
 			state()["points"][id] = 0
+		if poached:
+			_backfill_team(from_team)
 		GameManager.save()
 		return ""
 	var old := driver(replace_id)
@@ -314,12 +413,33 @@ func sign_driver(id: String, replace_id: String) -> String:
 	d["morale"] = 75
 	var seats: Array = lineup()
 	seats[seats.find(replace_id)] = id
+	_hand_over_car(replace_id, id)
 	if state()["number_one"] == replace_id:
 		state()["number_one"] = ""
 	if not state()["points"].has(id):
 		state()["points"][id] = 0
+	if poached:
+		_backfill_team(from_team)
 	GameManager.save()
 	return ""
+
+
+## A rival that lost a driver promotes the best free agent it can find.
+func _backfill_team(team_id: String) -> void:
+	var best: Dictionary = {}
+	for d: Dictionary in market():
+		if not d.get("junior", false) and (best.is_empty() or driver_overall(d) > driver_overall(best)):
+			best = d
+	if best.is_empty():
+		for d: Dictionary in market():
+			if best.is_empty() or driver_overall(d) > driver_overall(best):
+				best = d
+	if best.is_empty():
+		return
+	best["team"] = team_id
+	best["junior"] = false
+	if not state()["points"].has(best["id"]):
+		state()["points"][best["id"]] = 0
 
 
 ## Swaps a reserve into a race seat; the race driver drops to the bench.
@@ -334,6 +454,7 @@ func promote_reserve(reserve_id: String, seat_id: String) -> String:
 		seats[seats.find(reserve_id)] = seat_id
 		bench[bench.find(seat_id)] = reserve_id
 		return "That swap would break the salary cap."
+	_hand_over_car(seat_id, reserve_id)
 	driver(seat_id)["morale"] = maxi(5, int(driver(seat_id)["morale"]) - 20)
 	driver(reserve_id)["morale"] = mini(100, int(driver(reserve_id)["morale"]) + 15)
 	if state()["number_one"] == seat_id:
@@ -568,10 +689,16 @@ func race_entries() -> Array:
 	for t: Dictionary in teams:
 		for id: String in (race_lineup() if t["id"] == state()["team"] else team_drivers(t["id"])):
 			var d := driver(id)
+			var mine: bool = t["id"] == state()["team"]
+			# Your drivers race the car you gave them, and how well it suits them matters.
+			# Rivals' cars are scaled by the difficulty setting.
+			var machine := driver_car_rating(id) if mine else car_rating(t["id"]) + Difficulty.sim_car_bonus()
 			out.append({
 				"id": id, "name": d["name"], "team": t["id"], "short": t["short"], "color": t["color"], "number": d["number"],
-				"color2": t["color2"], "is_player": t["id"] == state()["team"], "car": car_rating(t["id"]), "pace": float(d["pace"]),
+				"color2": t["color2"], "is_player": mine, "car": machine, "pace": float(d["pace"]),
 				"racecraft": float(d["racecraft"]), "consistency": float(d["consistency"]), "ego": float(d["ego"]), "morale": float(d["morale"]),
+				"wet": float(d["wet"]), "tyres": float(d["tyres"]), "overtaking": float(d["overtaking"]), "defending": float(d["defending"]),
+				"starts": float(d["starts"]), "form": track_form(d, round_track()),
 			})
 	return out
 
@@ -609,13 +736,14 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	var mine: Array = []
 	var podiums := 0
 	var points_scored := 0
+	var dsq := _scrutineer(order)
 	for i in order.size():
 		var car: Dictionary = order[i]
 		var pts := POINTS[i] if i < POINTS.size() and not car["dnf"] else 0
 		c["points"][car["id"]] = int(c["points"].get(car["id"], 0)) + pts
 		c["team_points"][car["team"]] = int(c["team_points"][car["team"]]) + pts
 		if car["is_player"]:
-			mine.append({"id": car["id"], "name": car["name"], "position": i + 1, "dnf": car["dnf"], "points": pts})
+			mine.append({"id": car["id"], "name": car["name"], "position": i + 1, "dnf": car["dnf"], "points": pts, "dsq": car.get("dsq", false), "dsq_reason": car.get("dsq_reason", "")})
 			points_scored += pts
 			if i < 3 and not car["dnf"]:
 				podiums += 1
@@ -636,12 +764,18 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	var salaries := int(salary_total() / float(calendar.size()))
 	var f: Dictionary = c["factory"]
 	var upkeep := 150 * (int(f["aero"]) + int(f["power"]) + int(f["pit"]) + int(f["rd"]))
-	GameManager.add_money(prize + sponsor_income - salaries - upkeep)
+	var staff := int(engineer_salaries() / float(calendar.size()))
+	GameManager.add_money(prize + sponsor_income - salaries - upkeep - staff)
 	# --- board
 	var best := 99
 	for m: Dictionary in mine:
 		if not m["dnf"]:
 			best = mini(best, int(m["position"]))
+	# --- a new week at the factory: research points and a fresh wind-tunnel allowance
+	c["last_best"] = best
+	var research := research_income()
+	c["rp"] = mini(MAX_RP, int(c["rp"]) + int(research["total"]))
+	c["tunnel_used"] = 0
 	var expected_best := int(round(int(my_team()["expectation"]) * 1.6 + 1.0))
 	var board_change := clampi(int((expected_best - best) * 1.5), -10, 10) + podiums * 3
 	if int(c["promise"]) > 0:
@@ -675,16 +809,18 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	c["round"] = int(c["round"]) + 1
 	var report := {
 		"race": calendar[int(c["round"]) - 1]["name"], "mine": mine, "prize": prize, "sponsor": sponsor_income, "salaries": salaries, "upkeep": upkeep,
-		"board_change": board_change, "board": c["board"], "top": [],
+		"board_change": board_change, "board": c["board"], "top": [], "staff": staff, "research": int(research["total"]), "dsq": dsq,
 	}
 	for i in mini(10, order.size()):
 		report["top"].append({"name": order[i]["name"], "short": order[i]["short"], "color": order[i]["color"], "is_player": order[i]["is_player"], "dnf": order[i]["dnf"]})
 	c["last_report"] = report
+	_expire_offers()
 	_post_race_messages(mine, flags)
+	_poaching_round()
 	if int(c["board"]) <= 0:
 		c["fired"] = true
 	else:
-		_queue_event(flags, best)
+		_queue_event(flags, mine)
 	if season_over() and not c["fired"]:
 		_finish_season(report)
 	GameManager.save()
@@ -723,6 +859,7 @@ func _finish_season(report: Dictionary) -> void:
 			c["drivers"].erase(id)      # last year's unsigned juniors move on
 	_generate_juniors()
 	_refresh_sponsor_offers()
+	_new_season_rules()
 
 
 # ---------------------------------------------------------------- dilemmas
@@ -734,44 +871,90 @@ func _event(id: String) -> Dictionary:
 	return {}
 
 
-func _queue_event(flags: Dictionary, _best_finish: int) -> void:
+## Everything a dilemma can depend on, as plain numbers (true = 1).
+func _event_facts(flags: Dictionary, mine: Array) -> Dictionary:
 	var c := state()
 	var seats := lineup()
-	var star: String = seats[0] if float(driver(seats[0])["ego"]) >= float(driver(seats[1])["ego"]) else seats[1]
-	var pick := ""
-	if flags.get("collision", false):
-		pick = "collision_blame"
-	elif flags.get("held", "") != "" and _rng.randf() < 0.6:
-		pick = "held_back"
-	elif int(c["fia"]) >= 3:
-		pick = "protest"
-	elif int(c["cap_spent"]) > COST_CAP * 0.8 and not c["audited"]:
-		pick = "cost_cap_audit"
-		c["audited"] = true
-	elif int(c["board"]) < 35 and c["last_event"] != "board_pressure":
-		pick = "board_pressure"
-	elif float(driver(star)["ego"]) >= 70.0 and c["number_one"] == "" and _rng.randf() < 0.35:
-		pick = "number_one"
-	elif _rng.randf() < 0.75:
-		var pool: Array = []
-		for e: Dictionary in events:
-			if e["when"] == "any" and e["id"] != c["last_event"]:
-				pool.append(e["id"])
-		pick = pool[_rng.randi() % pool.size()]
-	if pick == "":
+	var d1 := driver(seats[0])
+	var d2 := driver(seats[1])
+	var finished := 0
+	var best := 99
+	var points := 0
+	var dsq := 0
+	for m: Dictionary in mine:
+		points += int(m.get("points", 0))
+		dsq += 1 if m.get("dsq", false) else 0
+		if not m["dnf"]:
+			finished += 1
+			best = mini(best, int(m["position"]))
+	var illegal := 0
+	for built: Dictionary in cars():
+		illegal += 0 if car_violations(built).is_empty() else 1
+	var pos := team_position()
+	return {
+		"collision": int(flags.get("collision", false)), "held": int(str(flags.get("held", "")) != ""), "wet": int(flags.get("wet", false)),
+		"win": int(best == 1), "podium": int(best <= 3), "points": int(points > 0), "no_points": int(points == 0), "double_dnf": int(finished == 0), "dsq": dsq,
+		"board": int(c["board"]), "rep": int(c["reputation"]), "cash": GameManager.money(), "cap": int(float(c["cap_spent"]) / COST_CAP * 100.0), "fia": int(c["fia"]),
+		"audited": int(c["audited"]), "round": int(c["round"]), "position": pos, "expect": int(my_team()["expectation"]), "behind": pos - int(my_team()["expectation"]),
+		"morale": mini(int(d1["morale"]), int(d2["morale"])), "ego": int(maxf(float(d1["ego"]), float(d2["ego"]))), "no_number_one": int(str(c["number_one"]) == ""),
+		"no_sponsor": int((c["sponsor"] as Dictionary).is_empty()), "engineers": engineers().size(), "rp": int(c["rp"]), "illegal": illegal,
+	}
+
+
+## "board<35", "cap>80", "win", "!audited" ... against the facts.
+static func _condition_holds(condition: String, facts: Dictionary) -> bool:
+	for op: String in ["<", ">", "="]:
+		if condition.contains(op):
+			var value := float(facts.get(condition.get_slice(op, 0), 0))
+			var limit := float(condition.get_slice(op, 1))
+			return value < limit if op == "<" else (value > limit if op == ">" else is_equal_approx(value, limit))
+	if condition.begins_with("!"):
+		return int(facts.get(condition.substr(1), 0)) == 0
+	return int(facts.get(condition, 0)) != 0
+
+
+## Picks the dilemma for this week. Nothing is random: an event fires only when every one
+## of its conditions is true for your team right now, the most pressing one wins, and
+## nothing repeats within five races.
+func _queue_event(flags: Dictionary, mine: Array) -> void:
+	var c := state()
+	var seats := lineup()
+	var facts := _event_facts(flags, mine)
+	var recent: Array = c.get("event_log", [])
+	var pick: Dictionary = {}
+	for e: Dictionary in events:
+		if recent.has(e["id"]) or (not pick.is_empty() and int(e["priority"]) <= int(pick["priority"])):
+			continue
+		var ok := true
+		for condition: String in e["if"]:
+			ok = ok and _condition_holds(condition, facts)
+		if ok:
+			pick = e
+	if pick.is_empty():
 		c["pending_event"] = {}
 		return
+	var star: String = seats[0] if float(driver(seats[0])["ego"]) >= float(driver(seats[1])["ego"]) else seats[1]
+	var low: String = seats[0] if int(driver(seats[0])["morale"]) <= int(driver(seats[1])["morale"]) else seats[1]
 	var d1: String = seats[0]
 	var d2: String = seats[1]
-	if pick == "held_back" and flags.get("held", "") == d1:
+	if pick["id"] == "held_back" and flags.get("held", "") == d1:
 		d1 = seats[1]
 		d2 = seats[0]
-	var rivals: Array = []
-	for t: Dictionary in teams:
-		if t["id"] != c["team"]:
-			rivals.append(t["name"])
-	c["last_event"] = pick
-	c["pending_event"] = {"id": pick, "d1": d1, "d2": d2, "star": star, "other": seats[1] if star == seats[0] else seats[0], "rival": rivals[_rng.randi() % rivals.size()]}
+	# The rival in the story is the team next to you in the championship.
+	var table := standings_teams()
+	var rival := ""
+	for i in table.size():
+		if table[i]["id"] == c["team"]:
+			rival = str(table[i - 1 if i > 0 else 1]["name"])
+	recent.append(pick["id"])
+	while recent.size() > 5:
+		recent.pop_front()
+	c["event_log"] = recent
+	c["last_event"] = pick["id"]
+	if pick["id"] == "cost_cap_audit":
+		c["audited"] = true
+	c["pending_event"] = {"id": pick["id"], "d1": d1, "d2": d2, "star": star, "other": seats[1] if star == seats[0] else seats[0],
+		"low": low, "high": seats[1] if low == seats[0] else seats[0], "rival": rival, "facts": facts}
 
 
 func pending_event() -> Dictionary:
@@ -782,16 +965,65 @@ func pending_event() -> Dictionary:
 	if e.is_empty():
 		return {}
 	e["text"] = _fill(e["text"], p)
+	e["why"] = _fill(str(e.get("why", "")), p)
 	for option: Dictionary in e["options"]:
 		option["text"] = _fill(option["text"], p)
+		# Exactly what the choice costs and pays, spelled out before you pick.
+		option["outcome"] = effects_text(option["effects"], p)
 	return e
 
 
 func _fill(text: String, p: Dictionary) -> String:
-	return text.format({
+	var words := {
 		"d1": driver(p["d1"]).get("name", "?"), "d2": driver(p["d2"]).get("name", "?"), "star": driver(p["star"]).get("name", "?"),
+		"low": driver(str(p.get("low", p["d1"]))).get("name", "?"), "high": driver(str(p.get("high", p["d2"]))).get("name", "?"),
 		"rival": p["rival"], "owner": my_team()["owner"], "team": my_team()["name"],
-	})
+	}
+	var facts: Dictionary = p.get("facts", {})
+	for key: String in facts:
+		words[key] = str(int(facts[key]))
+	return text.format(words)
+
+
+## One line listing every consequence of a set of effects: "+$2.5M  ·  BOARD -5  ·  ...".
+func effects_text(effects: Dictionary, p: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for key: String in effects:
+		var v: Variant = effects[key]
+		match key:
+			"money":
+				parts.append("%s%s" % ["+" if int(v) > 0 else "", money_text(float(v))])
+			"board":
+				parts.append("BOARD %+d" % int(v))
+			"rep":
+				parts.append("REPUTATION %+d" % int(v))
+			"car":
+				parts.append("CAR %+d" % int(v))
+			"fia":
+				parts.append("FIA ATTENTION %+d" % int(v))
+			"cap":
+				parts.append("COST CAP ROOM %s" % money_text(-float(v)))
+			"rp":
+				parts.append("RESEARCH %+d" % int(v))
+			"tunnel":
+				parts.append("+%d WIND-TUNNEL RUNS" % int(v))
+			"promise":
+				parts.append("PODIUM OWED IN %d RACES (OR BOARD -15)" % int(v))
+			"number_one":
+				parts.append("%s BECOMES NO.1" % str(driver(p["star"])["name"]).get_slice(" ", 1).to_upper())
+			"gamble":
+				var chance := int(round(float(v["chance"]) * 100.0))
+				parts.append("%d%% CHANCE: %s   /   %d%%: %s" % [chance, effects_text(v["win"], p), 100 - chance, effects_text(v["lose"], p)])
+			_:
+				var who := driver(str(p.get(key.get_slice("_", 1), "")))
+				if who.is_empty():
+					continue
+				var surname := str(who["name"]).get_slice(" ", 1).to_upper()
+				if key.begins_with("morale_"):
+					parts.append("%s MORALE %+d" % [surname, int(v)])
+				elif key.begins_with("salary_"):
+					parts.append("%s PAY %+d%%" % [surname, int(float(v) * 100.0)])
+	return "  ·  ".join(parts) if not parts.is_empty() else "NOTHING CHANGES"
 
 
 ## Applies the chosen option and returns a one-line summary of what changed.
@@ -835,6 +1067,12 @@ func _apply_effects(effects: Dictionary, p: Dictionary, notes: PackedStringArray
 			"promise":
 				c["promise"] = int(v)
 				notes.append("Podium promised within %d races" % int(v))
+			"rp":
+				c["rp"] = clampi(int(c["rp"]) + int(v), 0, MAX_RP)
+				notes.append("Research %+d" % int(v))
+			"tunnel":
+				c["tunnel_used"] = int(c.get("tunnel_used", 0)) - int(v)
+				notes.append("+%d wind-tunnel runs" % int(v))
 			"number_one":
 				c["number_one"] = p["star"]
 				notes.append("%s is number one" % driver(p["star"])["name"])
@@ -938,13 +1176,13 @@ func _post_race_messages(mine: Array, flags: Dictionary) -> void:
 		elif pos == 1:
 			text = _pick(["YES!! Get in there! Drinks are on me!", "P1 baby. Told you. Now give me the upgrades first.", "That's what this team can do. Thank you, all of you."])
 		elif pos <= 3:
-			text = _pick(["Podium! Feels good. We can win one of these.", "Solid points. The car was alive today.", "Champagne tastes better than I remembered."])
+			text = _pick(["Podium! Feels awsome. We can win one of these.", "Solid points. The car was alive today.", "Champagne tastes better than I remembered."])
 		elif pos <= 10:
 			text = _pick(["Points. I'll take it. We need more pace though.", "Decent day. Strategy was fine, the car wasn't.", "Top ten. Not what I signed up for, but ok."])
 		else:
-			text = _pick(["P%d. I can't race like this." % pos, "We were nowhere. Tell me there's an upgrade coming.", "Tough one. Head down, next race."])
+			text = _pick(["P%d. I can't race like this." % pos, "We were nowhere. Tell me there's an upgrade coming.", "Tuff one. Head down, next race."])
 		if morale < 35:
-			text += " " + _pick(["My manager wants a meeting.", "Honestly? I'm not happy here.", "Something has to change."])
+			text += " " + _pick(["My manager wants a meeting.", "Honestly? I'm definately not happy here.", "Something has to change."])
 		add_message(m["id"], text)
 	if flags.get("collision", false):
 		add_message("engineer", "Both cars need new floors after that contact. Repair bill: %s. Sort those two out." % money_text(900))
@@ -1001,6 +1239,14 @@ func resolve_offer(index: int, accept: bool) -> String:
 				result = _sell_driver(offer["driver"], offer["team"], int(offer["cash"]))
 			"job":
 				result = _switch_team(offer["team"])
+			"poach":
+				result = _sell_driver(offer["driver"], offer["team"], int(offer["cash"]))
+			"poach_eng":
+				result = _lose_engineer(offer["engineer"], offer["team"], int(offer["cash"]))
+	elif offer["type"] == "poach":
+		result = _counter_poach(offer)
+	elif offer["type"] == "poach_eng":
+		result = _counter_engineer(offer)
 	GameManager.save()
 	return result
 
@@ -1009,9 +1255,16 @@ func _sell_driver(id: String, to_team: String, cash: int) -> String:
 	if not lineup().has(id):
 		return "That driver is no longer yours to sell."
 	var replacement: Dictionary = {}
-	for d: Dictionary in market():
-		if salary_total(id, d["id"]) <= SALARY_CAP and (replacement.is_empty() or driver_overall(d) > driver_overall(replacement)):
-			replacement = d
+	# The bench steps up first; only an empty bench sends you to the market.
+	for r: String in reserves():
+		if replacement.is_empty() or driver_overall(driver(r)) > driver_overall(replacement):
+			replacement = driver(r)
+	if not replacement.is_empty():
+		reserves().erase(replacement["id"])
+	else:
+		for d: Dictionary in market():
+			if salary_total(id, d["id"]) <= SALARY_CAP and (replacement.is_empty() or driver_overall(d) > driver_overall(replacement)):
+				replacement = d
 	if replacement.is_empty():
 		return "No replacement fits under the salary cap - deal off."
 	# The buying team releases its weakest driver to make room.
@@ -1027,6 +1280,7 @@ func _sell_driver(id: String, to_team: String, cash: int) -> String:
 	replacement["junior"] = false
 	var seats: Array = lineup()
 	seats[seats.find(id)] = replacement["id"]
+	_hand_over_car(id, replacement["id"])
 	if state()["number_one"] == id:
 		state()["number_one"] = ""
 	if not state()["points"].has(replacement["id"]):
@@ -1053,11 +1307,16 @@ func _switch_team(team_id: String) -> String:
 	c["cap_spent"] = 0
 	c["car_bonus"] = 0.0
 	c["promise"] = 0
+	# The engineers and the cars belong to the team you are leaving.
+	for id: String in c["engineers"]:
+		c["staff"][id]["team"] = ""
+	c.erase("cars")
 	for id: String in ["owner", "engineer", "tech", "scout"]:
 		c["people"][id]["team"] = team_id
 	GameManager.profile["money"] = int(team(team_id)["budget"])
 	EventBus.money_changed.emit(GameManager.money())
 	_refresh_sponsor_offers()
+	_init_team_extras()
 	add_message("owner", "Welcome to %s. The target: %s." % [team(team_id)["name"], board_target_text().to_lower()])
 	return "You are now team principal of %s." % team(team_id)["name"]
 
@@ -1072,6 +1331,7 @@ func weekend_sim() -> GPSim:
 	if _weekend_sim == null:
 		_weekend_sim = GPSim.new()
 		_weekend_sim.setup(race_entries(), next_round(), int(state()["factory"]["pit"]), int(Time.get_ticks_usec()))
+		_weekend_sim.pit_bonus += best_engineer("strategy") / 100.0 * 0.8
 	return _weekend_sim
 
 
@@ -1118,17 +1378,21 @@ func build_drive(driver_id: String) -> void:
 			index = i
 	var start := clampi(index - 3, 0, sim.cars.size() - 8)
 	var rivals: Array = []
-	var my_strength := car_rating(state()["team"])
+	# You drive the car assigned to this driver; it becomes the car in the garage.
+	set_active_car(str(car_for(driver_id)["id"]))
+	var my_strength := driver_car_rating(driver_id)
+	GameManager.session_weather = sim.weather
 	for i in range(start, start + 8):
 		var car: Dictionary = sim.cars[i]
 		if car["id"] == driver_id:
 			continue
 		var d := driver(car["id"])
-		var delta := (float(car["car"]) - my_strength) * 0.6 + (driver_overall(d) - 80.0) * 0.3
+		var delta := (float(car["car"]) - my_strength) * 0.6 + (driver_overall(d) - 80.0) * 0.3 + track_form(d, round_track()) * 6.0
 		rivals.append({
 			"id": car["id"], "name": car["name"], "color": car["color"], "color2": car.get("color2", "#f4f6f2"), "pace": clampf(0.93 + delta * 0.004, 0.86, 0.985),
 			"braking_accuracy": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97), "consistency": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97),
 			"aggression": clampf(float(d["ego"]) / 100.0, 0.3, 0.9), "tire_management": 0.7, "error_rate": clampf((100.0 - float(d["consistency"])) / 150.0, 0.03, 0.2),
+			"wet": clampf(float(d["wet"]) / 100.0, 0.4, 1.0),
 			"setup": {"tires": GameManager.setup.parts.get("tires", "tires_hard")},   # same compound as you: a fair fight
 		})
 	GameManager.track_id = round_track()
@@ -1178,3 +1442,597 @@ func finish_drive(track_position: int, completed: bool) -> Dictionary:
 	report["driven"] = info["driver_name"]
 	clear_weekend()
 	return report
+
+
+# ---------------------------------------------------------------- driver traits and conditions
+
+## Fills in the detailed card of a driver (wet skill, tyre care, home track, car taste...).
+## Derived from the driver's id so the same driver always gets the same card.
+func _ensure_traits(d: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(d["id"]) + str(d["name"]))
+	var pace := float(d["pace"])
+	d["wet"] = clampi(int(pace) + rng.randi_range(-13, 7), 40, 99)
+	d["tyres"] = clampi(int(float(d["consistency"])) + rng.randi_range(-8, 8), 40, 99)
+	d["overtaking"] = clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99)
+	d["defending"] = clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99)
+	d["starts"] = clampi(int(pace) + rng.randi_range(-10, 6), 40, 99)
+	var ids := GameManager.TRACKS
+	d["home"] = ids[rng.randi() % ids.size()]
+	var types: Array = TRACK_TYPES.values()
+	d["strong"] = types[rng.randi() % types.size()]
+	d["weak"] = types[(types.find(d["strong"]) + 1 + rng.randi() % (types.size() - 1)) % types.size()]
+	d["likes_balance"] = rng.randi_range(-1, 1)
+	d["likes_aero"] = rng.randi_range(-1, 1)
+
+
+## Seconds per lap this driver finds (or loses) at a circuit.
+func track_form(d: Dictionary, track_id: String) -> float:
+	var form := 0.0
+	if str(d.get("home", "")) == track_id:
+		form += HOME_GAIN
+	var kind := str(TRACK_TYPES.get(track_id, ""))
+	if str(d.get("strong", "")) == kind:
+		form += TYPE_GAIN
+	elif str(d.get("weak", "")) == kind:
+		form -= TYPE_GAIN
+	return form
+
+
+func weather_label(d: Dictionary) -> String:
+	var gap := float(d["wet"]) - float(d["pace"])
+	if gap >= 2.0:
+		return "RAIN MASTER  -  quicker than the field when it is wet"
+	if gap <= -7.0:
+		return "DRY SPECIALIST  -  loses time and takes risks in the rain"
+	return "ALL CONDITIONS  -  no real weakness in wet or dry"
+
+
+## Short tag for the next race: "HOME RACE", "LOVES STREET TRACKS", ... or "".
+func form_note(d: Dictionary, track_id: String) -> String:
+	if str(d.get("home", "")) == track_id:
+		return "HOME RACE"
+	var kind := str(TRACK_TYPES.get(track_id, ""))
+	if str(d.get("strong", "")) == kind:
+		return "LOVES %s TRACKS" % kind
+	if str(d.get("weak", "")) == kind:
+		return "STRUGGLES ON %s TRACKS" % kind
+	return ""
+
+
+# ---------------------------------------------------------------- setting up the factory floor
+
+func _init_team_extras() -> void:
+	var c := state()
+	if not c.has("staff"):
+		c["staff"] = {}
+		c["engineers"] = []
+		_generate_engineers(22, true)
+	else:
+		# New team: the office here already has a few people at their desks.
+		c["engineers"] = []
+		_generate_engineers(3, true)
+	c["rp"] = int(c.get("rp", 30))
+	c["last_best"] = 0
+	c["tunnel_used"] = 0
+	var first := {"id": "car1", "name": "%s-01" % my_team()["short"], "setup": GameManager.setup.to_dict(), "materials": {}, "tunnel": 0.0}
+	for area: String in MATERIAL_AREAS:
+		first["materials"][area] = 0
+	c["cars"] = [first]
+	c["car_count"] = 1
+	c["active_car"] = "car1"
+	c["car_of"] = {}
+	if not c.has("regs"):
+		c["regs"] = _default_regs()
+
+
+func _generate_engineers(count: int, staff_some: bool) -> void:
+	var c := state()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var specs: Array = ENGINEER_SPECS.keys()
+	var house := 76 - int(my_team()["expectation"]) * 2
+	for i in count:
+		var id := "eng_%d_%d" % [int(c["season"]), rng.randi() % 1000000]
+		var mine := staff_some and i < 3
+		var employer := ""
+		var skill := rng.randi_range(48, 84)
+		if mine:
+			employer = c["team"]
+			skill = clampi(house + rng.randi_range(-7, 5), 45, 88)
+		elif i % 2 == 0:
+			# Half the paddock's good engineers already work for somebody.
+			employer = teams[rng.randi() % teams.size()]["id"]
+			if employer == c["team"]:
+				employer = ""
+			else:
+				skill = rng.randi_range(68, 96)
+		var salary := 180 + maxi(0, skill - 45) * 42
+		c["staff"][id] = {
+			"id": id, "name": "%s %s" % [FIRST_NAMES[rng.randi() % FIRST_NAMES.size()], LAST_NAMES[rng.randi() % LAST_NAMES.size()]],
+			"spec": specs[i % specs.size()] if mine else specs[rng.randi() % specs.size()], "skill": skill, "salary": salary,
+			"team": employer, "age": rng.randi_range(26, 58), "look": PixelArt.random_look(rng.randi(), 0 if rng.randf() < 0.6 else 3),
+		}
+		if mine:
+			c["engineers"].append(id)
+
+
+# ---------------------------------------------------------------- engineers and research
+
+func engineers() -> Array:
+	return state().get("engineers", [])
+
+
+func engineer(id: String) -> Dictionary:
+	return state()["staff"].get(id, {})
+
+
+func max_engineers() -> int:
+	return int(regs().get("max_engineers", ENGINEER_SLOTS))
+
+
+## Everyone you could hire: free agents first, then people under contract at rival teams.
+func engineer_market() -> Array:
+	var out: Array = []
+	for id: String in state()["staff"]:
+		if not engineers().has(id):
+			out.append(state()["staff"][id])
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if (str(a["team"]) == "") != (str(b["team"]) == ""):
+			return str(a["team"]) == ""
+		return int(a["skill"]) > int(b["skill"]))
+	return out
+
+
+## Buyout owed to a rival team for an engineer under contract there (0 for a free agent).
+func engineer_buyout(e: Dictionary) -> int:
+	return 0 if str(e["team"]) == "" or str(e["team"]) == str(state()["team"]) else int(float(e["salary"]) * 1.5)
+
+
+func hire_engineer(id: String) -> String:
+	var e := engineer(id)
+	if e.is_empty() or engineers().has(id):
+		return "Not available."
+	if engineers().size() >= max_engineers():
+		return "FIA headcount limit: %d engineers." % max_engineers()
+	var fee := engineer_buyout(e)
+	if GameManager.money() < fee:
+		return "Not enough cash for the %s buyout." % money_text(fee)
+	GameManager.add_money(-fee)
+	if fee > 0:
+		add_message("boss_%s" % e["team"], "So that's where %s went. Poaching my staff - noted." % e["name"])
+	e["team"] = state()["team"]
+	engineers().append(id)
+	GameManager.save()
+	return ""
+
+
+## Letting an engineer go costs a quarter of a season's salary in severance.
+func fire_engineer(id: String) -> String:
+	if not engineers().has(id):
+		return "Not on your staff."
+	var e := engineer(id)
+	var severance := int(float(e["salary"]) * 0.25)
+	GameManager.add_money(-severance)
+	engineers().erase(id)
+	e["team"] = ""
+	GameManager.save()
+	return "%s released. Severance %s." % [e["name"], money_text(severance)]
+
+
+func engineer_salaries() -> int:
+	var total := 0
+	for id: String in engineers():
+		total += int(engineer(id)["salary"])
+	return total
+
+
+## 0-100: the combined skill of the office. Empty desks drag it down.
+func engineering_rating() -> int:
+	var total := 0.0
+	for id: String in engineers():
+		total += float(engineer(id)["skill"])
+	return int(round(total / ENGINEER_SLOTS))
+
+
+## Skill of your best engineer in a specialism (0 when you have nobody).
+func best_engineer(spec: String) -> float:
+	var best := 0.0
+	for id: String in engineers():
+		if str(engineer(id)["spec"]) == spec:
+			best = maxf(best, float(engineer(id)["skill"]))
+	return best
+
+
+## Research points the office produces this week: engineer quality, scaled by how the
+## last race went (good results bring data and motivation), plus the data analysts' share.
+func research_income() -> Dictionary:
+	var best := int(state().get("last_best", 0))
+	var mult := 1.0
+	var why := "no race yet"
+	if best == 1:
+		mult = 1.5
+		why = "race win"
+	elif best >= 2 and best <= 3:
+		mult = 1.3
+		why = "podium"
+	elif best >= 4 and best <= 10:
+		mult = 1.1
+		why = "points finish"
+	elif best >= 99:
+		mult = 0.7
+		why = "double DNF"
+	elif best > 10:
+		mult = 0.9
+		why = "no points"
+	var base := engineering_rating() * 0.55
+	var data := best_engineer("data") * 0.12
+	return {"base": int(round(base)), "mult": mult, "why": why, "data": int(round(data)), "total": int(round(base * mult + data))}
+
+
+# ---------------------------------------------------------------- cars
+
+func cars() -> Array:
+	return state().get("cars", [])
+
+
+func car(id: String) -> Dictionary:
+	for c: Dictionary in cars():
+		if c["id"] == id:
+			return c
+	return cars()[0] if not cars().is_empty() else {}
+
+
+func active_car() -> Dictionary:
+	return car(str(state().get("active_car", "")))
+
+
+## The garage always edits GameManager.setup; this writes it back into the active car.
+func sync_active_car() -> void:
+	var c := state()
+	if c.is_empty() or not c.has("cars") or (c["cars"] as Array).is_empty():
+		return
+	active_car()["setup"] = GameManager.setup.to_dict()
+
+
+## Rolls another car into the garage (and onto the track, if you drive).
+func set_active_car(id: String) -> void:
+	if str(state().get("active_car", "")) == id:
+		return
+	sync_active_car()
+	state()["active_car"] = id
+	GameManager.setup = CarSetup.from_dict(active_car()["setup"])
+	EventBus.setup_changed.emit()
+	GameManager.save()
+
+
+func car_setup(c: Dictionary) -> CarSetup:
+	if c.get("id", "") == state().get("active_car", ""):
+		return GameManager.setup
+	return CarSetup.from_dict(c["setup"])
+
+
+## The car a driver races. Unassigned drivers get the first car.
+func car_for(driver_id: String) -> Dictionary:
+	return car(str(state()["car_of"].get(driver_id, "")))
+
+
+func assign_car(driver_id: String, car_id: String) -> void:
+	state()["car_of"][driver_id] = car_id
+	GameManager.save()
+
+
+func _hand_over_car(from_driver: String, to_driver: String) -> void:
+	var map: Dictionary = state()["car_of"]
+	if map.has(from_driver):
+		map[to_driver] = map[from_driver]
+		map.erase(from_driver)
+
+
+## Builds another car as a copy of the one in the garage. Returns "" or why it failed.
+func build_new_car() -> String:
+	var c := state()
+	if cars().size() >= MAX_CARS:
+		return "The garage only has room for %d cars." % MAX_CARS
+	if GameManager.money() < NEW_CAR_COST:
+		return "A new chassis costs %s." % money_text(NEW_CAR_COST)
+	if NEW_CAR_COST > cap_left():
+		return "A new chassis would break the cost cap."
+	GameManager.add_money(-NEW_CAR_COST)
+	charge_cap(NEW_CAR_COST)
+	sync_active_car()
+	c["car_count"] = int(c.get("car_count", cars().size())) + 1
+	var built := {"id": "car%d" % int(c["car_count"]), "name": "%s-%02d" % [my_team()["short"], int(c["car_count"])], "setup": (active_car()["setup"] as Dictionary).duplicate(true), "materials": {}, "tunnel": 0.0}
+	for area: String in MATERIAL_AREAS:
+		built["materials"][area] = 0
+	cars().append(built)
+	GameManager.save()
+	return ""
+
+
+func scrap_car(id: String) -> String:
+	if cars().size() <= 1:
+		return "You need at least one car."
+	var doomed := car(id)
+	cars().erase(doomed)
+	for driver_id: String in state()["car_of"].keys():
+		if state()["car_of"][driver_id] == id:
+			state()["car_of"].erase(driver_id)
+	if state()["active_car"] == id:
+		state()["active_car"] = ""
+		set_active_car(str(cars()[0]["id"]))
+	GameManager.save()
+	return "%s scrapped." % doomed["name"]
+
+
+## Overall of one car: the team's baseline, the build, the factory, materials and how much
+## the wind tunnel has taught you about it.
+func car_overall(c: Dictionary) -> float:
+	if c.is_empty():
+		return 40.0
+	var f: Dictionary = state()["factory"]
+	var tiers := 0
+	for area: String in c["materials"]:
+		tiers += int(c["materials"][area])
+	var base: float = state()["team_cars"].get(state()["team"], 70.0)
+	return clampf(base + (build_rating(car_setup(c)) - 60.0) * 0.6 + (int(f["aero"]) + int(f["power"])) * 1.5 + float(state()["car_bonus"])
+		+ tiers * MATERIAL_BONUS + float(c.get("tunnel", 0.0)) * TUNNEL_BONUS, 40.0, 99.0)
+
+
+## 0-100: how well a car suits a driver's taste in balance and wing level.
+func car_fit(d: Dictionary, c: Dictionary) -> int:
+	if d.is_empty() or c.is_empty():
+		return 0
+	var s := setup_stats(car_setup(c))
+	if not s.valid:
+		return 0
+	var balance_target: float = [-0.045, 0.0, 0.045][clampi(int(d["likes_balance"]) + 1, 0, 2)]
+	var balance_score := 1.0 - clampf(absf(s.balance_index - balance_target) / 0.09, 0.0, 1.0)
+	var cornering := s.mech_grip_g + s.downforce_200 / (s.mass * VehiclePhysicsConfig.GRAVITY) * 0.5
+	var bias := clampf(inverse_lerp(1.5, 2.4, cornering), 0.0, 1.0) - clampf(inverse_lerp(200.0, 310.0, s.top_speed * 3.6), 0.0, 1.0)
+	var aero_target: float = [-0.25, 0.0, 0.25][clampi(int(d["likes_aero"]) + 1, 0, 2)]
+	var aero_score := 1.0 - clampf(absf(bias - aero_target) / 0.6, 0.0, 1.0)
+	return int(round(45.0 + 55.0 * (0.55 * balance_score + 0.45 * aero_score)))
+
+
+## What the car is worth in this driver's hands.
+func driver_car_rating(driver_id: String) -> float:
+	var c := car_for(driver_id)
+	var fit := car_fit(driver(driver_id), c)
+	return clampf(car_overall(c) + (fit - 75.0) * 0.07, 40.0, 99.0)
+
+
+func car_taste(d: Dictionary) -> String:
+	return "%s WITH %s" % [BALANCE_NAMES[clampi(int(d["likes_balance"]) + 1, 0, 2)], AERO_NAMES[clampi(int(d["likes_aero"]) + 1, 0, 2)]]
+
+
+## Research points for the next material tier on an area of a car (0 = already the best).
+func material_cost(c: Dictionary, area: String) -> int:
+	var tier := int(c["materials"].get(area, 0))
+	if tier >= MATERIAL_COSTS.size():
+		return 0
+	# A specialist in that field knows where to save.
+	var discount := 1.0 - best_engineer(str(MATERIAL_AREAS[area]["spec"])) / 400.0
+	return int(round(MATERIAL_COSTS[tier] * discount))
+
+
+func upgrade_material(car_id: String, area: String) -> String:
+	var c := car(car_id)
+	var cost := material_cost(c, area)
+	if cost <= 0:
+		return "Already the best material there is."
+	if int(state()["rp"]) < cost:
+		return "Needs %d research points - your engineers have produced %d." % [cost, int(state()["rp"])]
+	state()["rp"] = int(state()["rp"]) - cost
+	c["materials"][area] = int(c["materials"].get(area, 0)) + 1
+	GameManager.save()
+	return ""
+
+
+# ---------------------------------------------------------------- FIA regulations
+
+func regs() -> Dictionary:
+	return state().get("regs", {})
+
+
+func _default_regs() -> Dictionary:
+	var starter := CarSetup.new()
+	var parts: Dictionary = GameManager.economy.get("starting_parts", {})
+	for slot: String in parts:
+		starter.install(slot, parts[slot])
+	return {"min_weight": int(setup_stats(starter).mass) - 28, "max_wing": CarSetup.WING_ANGLE_MAX, "banned": [], "max_engineers": ENGINEER_SLOTS, "v": 2}
+
+
+## Everything the scrutineers would object to on a car.
+func car_violations(c: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	if c.is_empty():
+		return out
+	var setup := car_setup(c)
+	var rules := regs()
+	var s := setup_stats(setup)
+	if s.valid and s.mass < float(rules["min_weight"]):
+		out.append("UNDERWEIGHT: %d kg, minimum %d kg (fit ballast)" % [int(s.mass), int(rules["min_weight"])])
+	if setup.front_wing_angle > int(rules["max_wing"]):
+		out.append("FRONT WING ANGLE %d, maximum %d" % [setup.front_wing_angle, int(rules["max_wing"])])
+	if setup.rear_wing_angle > int(rules["max_wing"]):
+		out.append("REAR WING ANGLE %d, maximum %d" % [setup.rear_wing_angle, int(rules["max_wing"])])
+	for slot: String in setup.parts:
+		if (rules["banned"] as Array).has(setup.parts[slot]):
+			out.append("BANNED PART: %s" % PartDB.get_part(setup.parts[slot]).display_name.to_upper())
+	return out
+
+
+func is_banned(part_id: String) -> bool:
+	return active() and (regs().get("banned", []) as Array).has(part_id)
+
+
+## Post-race scrutineering. An illegal car is usually caught: the driver is disqualified,
+## the team fined, and the FIA starts paying closer attention. Returns the names thrown out.
+func _scrutineer(order: Array) -> Array:
+	var c := state()
+	var out: Array = []
+	for entry: Dictionary in order.duplicate():
+		if not entry["is_player"] or entry["dnf"]:
+			continue
+		var faults := car_violations(car_for(entry["id"]))
+		if faults.is_empty() or _rng.randf() > 0.7 + 0.08 * int(c["fia"]):
+			continue
+		entry["dnf"] = true
+		entry["dsq"] = true
+		order.erase(entry)
+		order.append(entry)
+		out.append(entry["name"])
+		c["fia"] = int(c["fia"]) + 1
+		GameManager.add_money(-600)
+		entry["dsq_reason"] = faults[0]
+		add_message("tech", "DISQUALIFIED. The scrutineers threw %s out: %s. %s fine. Fix the car in the garage before the next race." % [entry["name"], faults[0].to_lower(), money_text(600)])
+	if engineers().size() > max_engineers():
+		GameManager.add_money(-400)
+		c["fia"] = int(c["fia"]) + 1
+		add_message("tech", "The FIA counted %d engineers in our office; the limit is %d. %s fine - and it repeats every race until someone goes." % [engineers().size(), max_engineers(), money_text(400)])
+	return out
+
+
+## Every winter the rulebook moves: minimum weight, wing limits, a banned part, headcount.
+func _new_season_rules() -> void:
+	var c := state()
+	var rules := regs()
+	rules["min_weight"] = int(rules["min_weight"]) + _rng.randi_range(-6, 10)
+	rules["max_wing"] = _rng.randi_range(8, 10)
+	rules["max_engineers"] = [5, 5, 5, 4, 6][_rng.randi() % 5]
+	rules["banned"] = []
+	var notes := PackedStringArray(["minimum weight %d kg" % int(rules["min_weight"]), "wing angles capped at %d" % int(rules["max_wing"]), "%d engineers per team" % int(rules["max_engineers"])])
+	if _rng.randf() < 0.6:
+		var pool: Array = []
+		for tier: Dictionary in rd_tiers:
+			if int(tier["level"]) >= 2:
+				pool.append_array(tier["unlocks"])
+		var banned: String = pool[_rng.randi() % pool.size()]
+		rules["banned"] = [banned]
+		notes.append("the %s is BANNED" % PartDB.get_part(banned).display_name)
+	# A new rulebook means last year's wind-tunnel data only half applies.
+	for built: Dictionary in cars():
+		built["tunnel"] = float(built.get("tunnel", 0.0)) * 0.5
+	c["tunnel_used"] = 0
+	_generate_engineers(5, false)
+	add_message("tech", "New FIA technical regulations for season %d: %s. Check every car on the FIA tab." % [int(c["season"]), ", ".join(notes)])
+
+
+# ---------------------------------------------------------------- wind tunnel
+
+## Aerodynamic testing restriction: the better you are doing, the fewer runs you get.
+func tunnel_allowance() -> int:
+	return 2 + (team_position() - 1) / 3
+
+
+func tunnel_runs_left() -> int:
+	return maxi(0, tunnel_allowance() - int(state().get("tunnel_used", 0)))
+
+
+## One wind-tunnel run on a car. Each run improves how well the model matches the real
+## car, which is worth car rating. Returns {"error"} or {"gain", "tunnel"}.
+func run_tunnel(car_id: String) -> Dictionary:
+	if tunnel_runs_left() <= 0:
+		return {"error": "No wind-tunnel runs left this week (FIA allowance: %d)." % tunnel_allowance()}
+	var c := car(car_id)
+	var before := float(c.get("tunnel", 0.0))
+	if before >= 1.0:
+		return {"error": "This car's model is fully correlated - nothing left to learn until the rules change."}
+	var gain := 0.1 + best_engineer("aero") / 100.0 * 0.14
+	c["tunnel"] = minf(1.0, before + gain)
+	state()["tunnel_used"] = int(state().get("tunnel_used", 0)) + 1
+	GameManager.save()
+	return {"gain": float(c["tunnel"]) - before, "tunnel": float(c["tunnel"])}
+
+
+# ---------------------------------------------------------------- talent poaching
+
+## Offers you did not answer before the next race go ahead without you.
+func _expire_offers() -> void:
+	var lapsed: Array = []
+	for m: Dictionary in state()["inbox"]:
+		if not m["done"] and str(m["offer"].get("type", "")) in ["poach", "poach_eng"]:
+			lapsed.append(m)
+	for m: Dictionary in lapsed:
+		m["done"] = true
+		var offer: Dictionary = m["offer"]
+		var result := _sell_driver(offer["driver"], offer["team"], int(offer["cash"])) if offer["type"] == "poach" else _lose_engineer(offer["engineer"], offer["team"], int(offer["cash"]))
+		add_message("owner", "You never answered %s. The clause was triggered without us. %s" % [team(offer["team"])["name"], result])
+
+
+func _open_poach() -> bool:
+	for m: Dictionary in state()["inbox"]:
+		if not m["done"] and str(m["offer"].get("type", "")) in ["poach", "poach_eng"]:
+			return true
+	return false
+
+
+## After every race rivals look at your people. Stars, unhappy drivers and good engineers
+## attract a triggered release clause: match the money or take the buyout.
+func _poaching_round() -> void:
+	var c := state()
+	if c["fired"] or _open_poach():
+		return
+	var rivals: Array = []
+	for t: Dictionary in teams:
+		if t["id"] != c["team"]:
+			rivals.append(t)
+	var rival: Dictionary = rivals[_rng.randi() % rivals.size()]
+	for id: String in lineup():
+		var d := driver(id)
+		if is_injured(id):
+			continue
+		var chance := 0.04 + maxf(0.0, driver_overall(d) - 80.0) * 0.008 + (0.14 if int(d["morale"]) < 40 else 0.0) + (0.04 if float(c["team_cars"][rival["id"]]) > car_rating(c["team"]) else 0.0)
+		if _rng.randf() < chance:
+			var cash := release_clause(d)
+			add_message("boss_%s" % rival["id"], "I'll be direct: we have triggered %s's release clause - %s. They are ready to sign with %s. Better the deal before the next race, or bank the buyout." % [d["name"], money_text(cash), rival["name"]],
+				{"type": "poach", "driver": id, "team": rival["id"], "cash": cash, "yes": "RELEASE  +%s" % money_text(cash), "no": "COUNTER  +20%% PAY"})
+			return
+	if engineers().is_empty() or _rng.randf() > 0.13:
+		return
+	var target := ""
+	for id: String in engineers():
+		if target == "" or int(engineer(id)["skill"]) > int(engineer(target)["skill"]):
+			target = id
+	if int(engineer(target)["skill"]) < 62:
+		return
+	var e := engineer(target)
+	var fee := int(float(e["salary"]) * 1.5)
+	add_message("boss_%s" % rival["id"], "Your %s, %s, has an offer from us on the table. Buyout %s. Match it with a raise or wave goodbye." % [str(ENGINEER_SPECS[e["spec"]]["name"]).to_lower(), e["name"], money_text(fee)],
+		{"type": "poach_eng", "engineer": target, "team": rival["id"], "cash": fee, "yes": "RELEASE  +%s" % money_text(fee), "no": "COUNTER  +20%% PAY"})
+
+
+## The counter-offer: a 20% raise keeps a driver who still believes in the project.
+func _counter_poach(offer: Dictionary) -> String:
+	var id: String = offer["driver"]
+	if not lineup().has(id):
+		return "That driver has already gone."
+	var d := driver(id)
+	if int(d["morale"]) < 30:
+		return "%s refused the raise and wants out. %s" % [d["name"], _sell_driver(id, offer["team"], int(offer["cash"]))]
+	var old := int(d["salary"])
+	d["salary"] = int(old * 1.2)
+	if salary_total() > SALARY_CAP:
+		d["salary"] = old
+		return "The raise would break the salary cap. %s" % _sell_driver(id, offer["team"], int(offer["cash"]))
+	d["morale"] = mini(100, int(d["morale"]) + 8)
+	return "%s stays on %s a season." % [d["name"], money_text(float(d["salary"]))]
+
+
+func _lose_engineer(id: String, to_team: String, cash: int) -> String:
+	if not engineers().has(id):
+		return "That engineer has already left."
+	engineers().erase(id)
+	engineer(id)["team"] = to_team
+	GameManager.add_money(cash)
+	return "%s joins %s. Buyout %s banked." % [engineer(id)["name"], team(to_team)["name"], money_text(cash)]
+
+
+func _counter_engineer(offer: Dictionary) -> String:
+	var id: String = offer["engineer"]
+	if not engineers().has(id):
+		return "That engineer has already left."
+	var e := engineer(id)
+	e["salary"] = int(float(e["salary"]) * 1.2)
+	return "%s stays on %s a season." % [e["name"], money_text(float(e["salary"]))]

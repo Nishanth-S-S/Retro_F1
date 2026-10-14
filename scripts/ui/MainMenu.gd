@@ -5,6 +5,7 @@ var _settings: SettingsPanel
 var _popup: InfoPopup
 var _tutorial: TutorialUI
 var _free: Control
+var _difficulty: DifficultyPanel
 var _time := 0.0
 var _crest: Art
 
@@ -38,12 +39,10 @@ func _ready() -> void:
 	var modes := Frame.make("MODES", 10)
 	modes.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left.add_child(modes)
-	var career_text := "CAREER  -  NEW TEAM PRINCIPAL"
-	if Career.active():
-		career_text = "CAREER  -  %s  S%d" % [str(Career.my_team()["name"]).to_upper(), int(Career.state()["season"])]
-	var career := UIKit.button(career_text, 20, true)
-	career.custom_minimum_size = Vector2(0, 70)
-	career.pressed.connect(func() -> void: SceneManager.goto("career" if Career.active() else "career_start"))
+	# Careers are the saves: this opens the list to continue one or start another.
+	var career := UIKit.button("CAREER", 28, true)
+	career.custom_minimum_size = Vector2(0, 96)
+	career.pressed.connect(func() -> void: SceneManager.goto("saves"))
 	modes.body.add_child(career)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -55,25 +54,15 @@ func _ready() -> void:
 		["# GARAGE", func() -> void: SceneManager.goto("garage")],
 		["? TUTORIAL", func() -> void: _tutorial.open()],
 		["= SETTINGS", func() -> void: _settings.visible = true],
+		["* DIFFICULTY: %s" % Difficulty.mode_name(), func() -> void: _difficulty.open()],
 	]:
-		var b := UIKit.button(info[0], 18)
+		var b := UIKit.button(info[0], 20)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(0, 62)
+		b.custom_minimum_size = Vector2(0, 78)
 		b.pressed.connect(info[1])
 		grid.add_child(b)
-	# --- save slot
-	var save := Frame.make("SAVE %d" % SaveManager.slot, 6)
-	left.add_child(save)
-	var save_row := HBoxContainer.new()
-	save_row.add_theme_constant_override("separation", 10)
-	save.body.add_child(save_row)
-	var summary := UIKit.label("%s   BEST LAP %s" % [UIKit.money(GameManager.money()), LapTimer.format_time(float(GameManager.record()["best_lap"]))], 14, UIKit.TEXT_DIM)
-	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save_row.add_child(summary)
-	var change := UIKit.button("CHANGE SAVE", 14)
-	change.custom_minimum_size = Vector2(170, 46)
-	change.pressed.connect(func() -> void: SceneManager.goto("saves"))
-	save_row.add_child(change)
+		if str(info[0]).begins_with("*"):
+			b.name = "DifficultyButton"
 	# --- crest
 	var right := Frame.make("")
 	right.custom_minimum_size = Vector2(470, 0)
@@ -86,6 +75,11 @@ func _ready() -> void:
 	_popup = InfoPopup.new()
 	add_child(_popup)
 	_build_free_drive()
+	_difficulty = DifficultyPanel.new()
+	add_child(_difficulty)
+	_difficulty.closed.connect(func() -> void:
+		(find_child("DifficultyButton", true, false) as Button).text = "* DIFFICULTY: %s" % Difficulty.mode_name()
+		(find_child("FreeDifficulty", true, false) as Button).text = "DIFFICULTY: %s  /  WEATHER: %s" % [Difficulty.mode_name(), DifficultyPanel.WEATHER_CHOICES[int(GameManager.setting("free_weather"))]])
 	_tutorial = TutorialUI.new()
 	add_child(_tutorial)
 	if not bool(GameManager.profile.get("tutorial_seen", false)):
@@ -112,8 +106,8 @@ func _paint_crest(a: Control) -> void:
 	a.draw_rect(plate, UIKit.WARM)
 	a.draw_rect(Rect2(plate.position, Vector2(plate.size.x, 10)), Color("ff8a80"))
 	a.draw_rect(Rect2(plate.position + Vector2(0, plate.size.y - 12.0), Vector2(plate.size.x, 12)), UIKit.WARM.darkened(0.35))
-	PixelFont.draw_centered(a, Rect2(plate.position + Vector2(0, 10), Vector2(plate.size.x, 54)), "APEX", px, Color.WHITE, UIKit.INK)
-	PixelFont.draw_centered(a, Rect2(plate.position + Vector2(0, 64), Vector2(plate.size.x, 54)), "ASSEMBLY", px, Color.WHITE, UIKit.INK)
+	PixelFont.draw_centered(a, Rect2(plate.position + Vector2(0, 10), Vector2(plate.size.x, 54)), "RETRO", px, Color.WHITE, UIKit.INK)
+	PixelFont.draw_centered(a, Rect2(plate.position + Vector2(0, 64), Vector2(plate.size.x, 54)), "F1", px, Color.WHITE, UIKit.INK)
 	# A pixel car doing laps under the crest.
 	var track := Rect2(c + Vector2(-190, 96), Vector2(380, 44))
 	a.draw_rect(track, Color("1c1e22"))
@@ -144,7 +138,7 @@ func _build_free_drive() -> void:
 	box.add_child(UIKit.title_bar("FREE DRIVE", 52.0))
 	var track := UIKit.button("", 16)
 	track.custom_minimum_size = Vector2(0, 54)
-	var show_track := func() -> void: track.text = "<  TRACK: %s  >" % GameManager.TRACK_NAMES[GameManager.track_id]
+	var show_track := func() -> void: track.text = "<  TRACK: %s  -  %s  >" % [GameManager.TRACK_NAMES[GameManager.track_id], TrackTheme.label(GameManager.track_id)]
 	show_track.call()
 	track.pressed.connect(func() -> void:
 		GameManager.track_id = GameManager.TRACKS[(GameManager.TRACKS.find(GameManager.track_id) + 1) % GameManager.TRACKS.size()]
@@ -156,6 +150,11 @@ func _build_free_drive() -> void:
 		var mode: String = info[1]
 		b.pressed.connect(func() -> void: _start(mode))
 		box.add_child(b)
+	var diff := UIKit.button("DIFFICULTY: %s  /  WEATHER: %s" % [Difficulty.mode_name(), DifficultyPanel.WEATHER_CHOICES[int(GameManager.setting("free_weather"))]], 14)
+	diff.name = "FreeDifficulty"
+	diff.custom_minimum_size = Vector2(0, 50)
+	diff.pressed.connect(func() -> void: _difficulty.open())
+	box.add_child(diff)
 	var back := UIKit.button("< BACK", 20)
 	back.custom_minimum_size = Vector2(0, 64)
 	back.pressed.connect(func() -> void: _free.visible = false)

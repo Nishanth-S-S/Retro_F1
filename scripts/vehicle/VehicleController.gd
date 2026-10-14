@@ -51,6 +51,15 @@ var is_destroyed := false
 ## 100 = full tank. Only burns when `uses_fuel` is set (race sessions).
 var fuel := 100.0
 var uses_fuel := false
+## Difficulty scales how much an impact hurts.
+var damage_scale := 1.0
+## Driving aids (set by RaceManager for the player): target steering, how strongly to blend
+## it in, and an automatic brake request.
+var assist_steer := 0.0
+var assist_steer_weight := 0.0
+var assist_brake := 0.0
+## Wet track: rear tires throw up spray.
+var wet := false
 
 var _teleport_pending := false
 var _teleport_transform := Transform2D()
@@ -64,6 +73,7 @@ var _collision_cooldown := 0.0
 var _last_velocity := Vector2.ZERO
 var _velocity_valid := false
 var _damage_smoke: CPUParticles2D
+var _spray: CPUParticles2D
 
 
 func configure(car_setup: CarSetup, track_data: TrackData) -> void:
@@ -130,6 +140,8 @@ func _build_visuals() -> void:
 	_dust = _make_particles(Color(0.62, 0.55, 0.4, 0.55), 16)
 	_damage_smoke = _make_particles(Color(0.2, 0.2, 0.22, 0.6), 14)
 	_damage_smoke.lifetime = 1.1
+	_spray = _make_particles(Color(0.86, 0.9, 0.96, 0.4), 26)
+	_spray.lifetime = 0.9
 	_engine_audio = AudioManager.make_loop_player("engine", not is_player)
 	add_child(_engine_audio)
 	if is_player:
@@ -223,6 +235,12 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var steer := input.steer if controls_enabled else 0.0
 	var throttle := input.throttle if controls_enabled else 0.0
 	var brake := input.brake if controls_enabled else 1.0
+	if is_player and controls_enabled:
+		if assist_steer_weight > 0.0:
+			steer = lerpf(steer, assist_steer, assist_steer_weight)
+		if assist_brake > 0.0:
+			brake = maxf(brake, assist_brake)
+			throttle *= 1.0 - assist_brake
 	var velocity := state.linear_velocity / PPM
 	# Whatever changed our velocity since the last step was a collision impulse.
 	if takes_damage and _velocity_valid and not is_destroyed:
@@ -363,6 +381,8 @@ func _update_effects(_delta: float) -> void:
 	_smoke_front.emitting = front_slide > threshold + 0.25 and surface_front < VehiclePhysicsConfig.Surface.GRASS
 	_smoke_rear.emitting = rear_slide > threshold + 0.25 and not rough
 	_dust.emitting = rough and speed > 5.0
+	_spray.position = Vector2(rear_x, 0)
+	_spray.emitting = wet and not rough and speed > 14.0
 	if skid_marks:
 		var half := 0.8 * PPM
 		if front_slide > threshold and surface_front < VehiclePhysicsConfig.Surface.GRASS:

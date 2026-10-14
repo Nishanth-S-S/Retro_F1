@@ -37,6 +37,7 @@ func _run() -> void:
 	await _shot("a_tutorial")
 	var start := await _goto("res://scenes/career/CareerStart.tscn")
 	await _shot("b_teams")
+	start.set("_look", {"skin": 2, "hair": 5, "hair_color": 2, "accessory": 0, "outfit": 1, "face": 5})
 	start.set("_team_id", "fer")
 	start.call("_show_manager")
 	await _shot("c_manager")
@@ -50,7 +51,7 @@ func _run() -> void:
 		Career.scout(Career.market()[0]["id"])
 	Career.scout(Career.market()[1]["id"])
 	Career._injure(Career.driver(Career.lineup()[1]), 2, "hurt in the crash")
-	for i in range(1, 6):
+	for i in range(1, 4):
 		hub.call("_show_tab", i)
 		await _shot("e_tab%d" % i)
 	Career._post_race_messages([{"id": Career.lineup()[0], "position": 2, "dnf": false}, {"id": Career.lineup()[1], "position": 14, "dnf": false}], {"collision": false})

@@ -22,6 +22,8 @@ const BARRIER_THICKNESS := 1.3
 
 var data: TrackData
 var _st: SurfaceTool
+var _scenery: TrackScenery
+var _mesh_instance: MeshInstance2D
 
 
 func _ready() -> void:
@@ -74,23 +76,19 @@ func _rect(center: Vector2, half: Vector2, angle: float, color: Color) -> void:
 func _build_mesh() -> void:
 	_st = SurfaceTool.new()
 	_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var area := data.bounds.grow(450.0 * PPM)
-	# Grass with mown stripes.
-	_quad(area.position, Vector2(area.end.x, area.position.y), area.end, Vector2(area.position.x, area.end.y), COLOR_GRASS)
-	var stripe := 30.0 * PPM
-	var y := area.position.y
-	while y < area.end.y:
-		_quad(Vector2(area.position.x, y), Vector2(area.end.x, y), Vector2(area.end.x, y + stripe), Vector2(area.position.x, y + stripe), COLOR_GRASS_STRIPE)
-		y += stripe * 2.0
+	# Ground, water, roads and runways come from the circuit's theme and sit under the track.
+	_scenery = TrackScenery.new(data, _st)
+	_scenery.ground(data.bounds.grow(450.0 * PPM))
+	var gravel := Color(str(_scenery.theme["gravel"]))
 	var hw := data.half_width
 	var n := data.count
 	# Gravel traps.
 	for i in n:
 		var j := data.wrap_index(i + 1)
 		if data.gravel_left[i] == 1 and data.gravel_left[j] == 1:
-			_quad(_edge(i, -hw), _edge(i + 1, -hw), _edge(i + 1, -data.barrier_left[j]), _edge(i, -data.barrier_left[i]), COLOR_GRAVEL)
+			_quad(_edge(i, -hw), _edge(i + 1, -hw), _edge(i + 1, -data.barrier_left[j]), _edge(i, -data.barrier_left[i]), gravel)
 		if data.gravel_right[i] == 1 and data.gravel_right[j] == 1:
-			_quad(_edge(i, hw), _edge(i + 1, hw), _edge(i + 1, data.barrier_right[j]), _edge(i, data.barrier_right[i]), COLOR_GRAVEL)
+			_quad(_edge(i, hw), _edge(i + 1, hw), _edge(i + 1, data.barrier_right[j]), _edge(i, data.barrier_right[i]), gravel)
 	# Asphalt: two alternating tones every few samples give the surface a readable flow at speed.
 	for i in n:
 		_strip_segment(i, -hw, hw, COLOR_ASPHALT if (i / 3) % 2 == 0 else COLOR_ASPHALT_ALT)
@@ -119,6 +117,13 @@ func _build_mesh() -> void:
 	mesh_instance.mesh = _st.commit()
 	mesh_instance.z_index = -10
 	add_child(mesh_instance)
+	_mesh_instance = mesh_instance
+
+
+## Darkens and cools the whole scene for rain (0 dry, 1 light, 2 heavy).
+func set_wet(level: int) -> void:
+	if _mesh_instance:
+		_mesh_instance.modulate = [Color.WHITE, Color(0.8, 0.85, 0.93), Color(0.62, 0.68, 0.8)][clampi(level, 0, 2)]
 
 
 func _build_start_area() -> void:
@@ -228,28 +233,15 @@ func _build_scenery() -> void:
 		var ang := data.tangents[j].angle()
 		_rect(pos + Vector2(4, 5), Vector2(34, 7.5) * PPM, ang, Color(0, 0, 0, 0.22))
 		_rect(pos, Vector2(34, 7.5) * PPM, ang, Color("58616e"))
+		for k in 5:
+			_scenery.reserve(pos + data.tangents[j] * (k - 2) * 15.0 * PPM, 10.0)
 		if crowd:
 			_crowd(pos, Vector2(33, 6.8) * PPM, ang, rng)
 		else:
 			for row in 5:
 				_rect(pos + data.normals[j] * (row - 2) * 2.6 * PPM, Vector2(33, 0.8) * PPM, ang, [Color("d95050"), Color("e8e8e8"), Color("3a78c2"), Color("e8e8e8"), Color("f5c542")][row])
-	# Trees, kept clear of every piece of track.
-	var area := data.bounds.grow(260.0 * PPM)
-	var placed := 0
-	var attempts := 0
-	while placed < 420 and attempts < 6000:
-		attempts += 1
-		var pos := Vector2(rng.randf_range(area.position.x, area.end.x), rng.randf_range(area.position.y, area.end.y))
-		var idx := data.nearest_index(pos)
-		if absf(data.lateral_offset(pos, idx)) < 34.0 and pos.distance_to(data.points[idx]) < 40.0 * PPM:
-			continue
-		if pos.distance_to(data.points[idx]) < 34.0 * PPM:
-			continue
-		var r := rng.randf_range(2.6, 5.2) * PPM
-		_disc(pos + Vector2(r * 0.25, r * 0.35), r, Color(0, 0, 0, 0.2))
-		_disc(pos, r, COLOR_TREE.darkened(rng.randf_range(0.0, 0.18)))
-		_disc(pos - Vector2(r * 0.22, r * 0.22), r * 0.55, COLOR_TREE_LIGHT, 8)
-		placed += 1
+	# Buildings, vegetation, rocks, boats and landmarks for this location.
+	_scenery.objects()
 
 
 func _build_barriers() -> void:

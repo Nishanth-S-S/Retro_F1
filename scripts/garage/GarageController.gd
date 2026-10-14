@@ -1,9 +1,9 @@
 extends Control
-## Garage scene root. The screen is just the car: tap a part of it and a picker for that
-## hardpoint slides in on the right. Four simple bars summarise the build; the full
+## Garage scene root. The screen is just the car: tap a part of it and the whole sidebar on
+## the left becomes the picker for that hardpoint. Four simple bars summarise the build; the full
 ## engineering readout is one tap away under FULL STATS.
 
-const PANEL_WIDTH := 340.0
+const PANEL_WIDTH := 410.0
 ## Which tuning slider belongs to which hardpoint.
 const SLOT_SLIDERS := {"front_wing": "FRONT WING ANGLE", "rear_wing": "REAR WING ANGLE", "brakes": "BRAKE BIAS", "ballast": "BALLAST POSITION"}
 
@@ -32,6 +32,11 @@ var _sliders: Dictionary = {}
 var _slider_values: Dictionary = {}
 var _slider_cells: Dictionary = {}
 var _drag_scroll := 0
+var _tunnel: WindTunnelUI
+var _workshop: WorkshopUI
+## Sidebar widgets shown only while no hardpoint is selected.
+var _summary_nodes: Array[Control] = []
+var _car_button: Button
 
 
 func _ready() -> void:
@@ -44,7 +49,7 @@ func _ready() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 	_workspace = BlueprintWorkspace.new()
-	_place(_workspace, 0.0, 0.0, 1.0, 1.0, 12, 78, -(PANEL_WIDTH + 20), -12)
+	_place(_workspace, 0.0, 0.0, 1.0, 1.0, PANEL_WIDTH + 20, 78, -12, -12)
 	add_child(_workspace)
 	_workspace.slot_tapped.connect(_on_slot_tapped)
 	_build_top_bar()
@@ -56,6 +61,10 @@ func _ready() -> void:
 	_drag.dropped.connect(_on_part_dropped)
 	_popup = InfoPopup.new()
 	add_child(_popup)
+	_tunnel = WindTunnelUI.new()
+	add_child(_tunnel)
+	_workshop = WorkshopUI.new()
+	add_child(_workshop)
 	EventBus.setup_changed.connect(_refresh_all)
 	EventBus.inventory_changed.connect(_refresh_all)
 	EventBus.money_changed.connect(func(_amount: int) -> void: _money_label.text = UIKit.money(GameManager.money()))
@@ -86,6 +95,28 @@ func _build_top_bar() -> void:
 	back.pressed.connect(func() -> void: SceneManager.goto("career" if Career.active() else "menu"))
 	row.add_child(back)
 	row.add_child(UIKit.title_bar("GARAGE"))
+	if Career.active():
+		# Career teams can own several cars: tap to roll the next one into the bay.
+		_car_button = UIKit.button("", 13)
+		_car_button.custom_minimum_size = Vector2(210, 58)
+		_car_button.pressed.connect(func() -> void:
+			var cars := Career.cars()
+			var index := 0
+			for i in cars.size():
+				if cars[i]["id"] == Career.active_car()["id"]:
+					index = i
+			Career.set_active_car(str(cars[(index + 1) % cars.size()]["id"]))
+			_show_picker(""))
+		row.add_child(_car_button)
+		# Materials, factory, FIA check, who drives what, new cars.
+		var workshop := UIKit.button("WORKSHOP", 14, true)
+		workshop.custom_minimum_size = Vector2(130, 58)
+		workshop.pressed.connect(func() -> void: _workshop.open())
+		row.add_child(workshop)
+	var tunnel := UIKit.button("WIND\nTUNNEL", 13)
+	tunnel.custom_minimum_size = Vector2(110, 58)
+	tunnel.pressed.connect(func() -> void: _tunnel.open())
+	row.add_child(tunnel)
 	var cash := UIKit.panel(UIKit.PANEL, UIKit.LINE)
 	cash.custom_minimum_size = Vector2(150, 58)
 	row.add_child(cash)
@@ -97,7 +128,7 @@ func _build_top_bar() -> void:
 
 func _build_side_panel() -> void:
 	var panel := UIKit.panel()
-	_place(panel, 1.0, 0.0, 1.0, 1.0, -(PANEL_WIDTH + 12), 78, -12, -12)
+	_place(panel, 0.0, 0.0, 0.0, 1.0, 12, 78, PANEL_WIDTH + 12, -12)
 	add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -109,8 +140,10 @@ func _build_side_panel() -> void:
 		bar.custom_minimum_size = Vector2(0, 30)
 		box.add_child(bar)
 		_bars[term] = bar
+		_summary_nodes.append(bar)
 	_balance = UIKit.label("", 15, UIKit.GOOD)
 	box.add_child(_balance)
+	_summary_nodes.append(_balance)
 	_warning = UIKit.label("", 13, UIKit.BAD)
 	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_warning)
@@ -119,7 +152,7 @@ func _build_side_panel() -> void:
 	_overview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_overview.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_child(_overview)
-	var tip := UIKit.label("TAP A PART\nTO CHANGE IT", 16, UIKit.TEXT_DIM)
+	var tip := UIKit.label("TAP A PART\nTO CHANGE IT", 22, UIKit.TEXT_DIM)
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overview.add_child(tip)
@@ -130,11 +163,11 @@ func _build_side_panel() -> void:
 	box.add_child(_picker)
 	var head := HBoxContainer.new()
 	_picker.add_child(head)
-	_picker_title = UIKit.label("", 20, UIKit.HOT)
+	_picker_title = UIKit.label("", 28, UIKit.HOT)
 	_picker_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(_picker_title)
-	var close := UIKit.button("✕", 16)
-	close.custom_minimum_size = Vector2(44, 38)
+	var close := UIKit.button("DONE", 18, true)
+	close.custom_minimum_size = Vector2(120, 54)
 	close.pressed.connect(func() -> void: _show_picker(""))
 	head.add_child(close)
 	_add_slider(_picker, "FRONT WING ANGLE", CarSetup.WING_ANGLE_MIN, CarSetup.WING_ANGLE_MAX, 1.0, func(v: float) -> void: GameManager.setup.front_wing_angle = int(v))
@@ -149,12 +182,12 @@ func _build_side_panel() -> void:
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 6)
 	_scroll.add_child(_list)
-	_detail = UIKit.label("", 12, UIKit.TEXT_DIM)
+	_detail = UIKit.label("", 14, UIKit.TEXT_DIM)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.custom_minimum_size = Vector2(PANEL_WIDTH - 40.0, 0)
 	_picker.add_child(_detail)
-	_remove_button = UIKit.button("REMOVE", 12)
-	_remove_button.custom_minimum_size = Vector2(0, 32)
+	_remove_button = UIKit.button("REMOVE", 15)
+	_remove_button.custom_minimum_size = Vector2(0, 48)
 	_remove_button.pressed.connect(func() -> void:
 		GameManager.remove_part(_active_slot)
 		AudioManager.play("deny", -14.0, 1.4))
@@ -167,12 +200,14 @@ func _build_side_panel() -> void:
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 6)
 	box.add_child(modes)
-	var stats := UIKit.button("FULL STATS", 13)
+	_summary_nodes.append(test)
+	_summary_nodes.append(modes)
+	var stats := UIKit.button("FULL STATS", 15)
 	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stats.custom_minimum_size = Vector2(0, 44)
 	stats.pressed.connect(func() -> void: _details.visible = true)
 	modes.add_child(stats)
-	var hq := UIKit.button("TEAM HQ" if Career.active() else "MENU", 13)
+	var hq := UIKit.button("TEAM HQ" if Career.active() else "MENU", 15)
 	hq.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hq.custom_minimum_size = Vector2(0, 44)
 	hq.pressed.connect(func() -> void: SceneManager.goto("career" if Career.active() else "menu"))
@@ -192,12 +227,12 @@ func _build_details() -> void:
 			_details.visible = false)
 	_details.add_child(dim)
 	_stats_panel = GarageUI.new()
-	_place(_stats_panel, 1.0, 0.0, 1.0, 1.0, -(PANEL_WIDTH + 12), 78, -12, -124)
+	_place(_stats_panel, 0.0, 0.0, 0.0, 1.0, 12, 78, PANEL_WIDTH + 12, -124)
 	_stats_panel.term_tapped.connect(func(term: String) -> void: _popup.open_term(term))
 	_details.add_child(_stats_panel)
 	var views := HBoxContainer.new()
 	views.add_theme_constant_override("separation", 6)
-	_place(views, 1.0, 1.0, 1.0, 1.0, -(PANEL_WIDTH + 12), -118, -12, -70)
+	_place(views, 0.0, 1.0, 0.0, 1.0, 12, -118, PANEL_WIDTH + 12, -70)
 	_details.add_child(views)
 	for overlay: String in ["MASS", "AERO"]:
 		var b := UIKit.button("SHOW " + overlay, 13)
@@ -210,7 +245,7 @@ func _build_details() -> void:
 				_workspace.show_aero = on)
 		views.add_child(b)
 	var close := UIKit.button("CLOSE", 16, true)
-	_place(close, 1.0, 1.0, 1.0, 1.0, -(PANEL_WIDTH + 12), -64, -12, -12)
+	_place(close, 0.0, 1.0, 0.0, 1.0, 12, -64, PANEL_WIDTH + 12, -12)
 	close.pressed.connect(func() -> void: _details.visible = false)
 	_details.add_child(close)
 
@@ -271,7 +306,13 @@ func _refresh_all() -> void:
 	_balance.add_theme_color_override("font_color", GarageUI.BALANCE_COLORS[CarStats.BALANCE_LABELS.find(label)])
 	var missing := BuildValidator.missing_labels(setup)
 	_warning.text = "" if missing.is_empty() else "CAR NOT READY  ·  missing %s" % ", ".join(missing)
-	_warning.visible = not missing.is_empty()
+	if Career.active():
+		var car := Career.active_car()
+		_car_button.text = "%s  OVR %d\nCAR %d OF %d  >" % [car["name"], int(round(Career.car_overall(car))), Career.cars().find(car) + 1, Career.cars().size()]
+		var faults := Career.car_violations(car)
+		if missing.is_empty() and not faults.is_empty():
+			_warning.text = "ILLEGAL UNDER FIA RULES  ·  %s" % "  ·  ".join(faults)
+	_warning.visible = _warning.text != ""
 	for term: String in _sliders:
 		var slider: HSlider = _sliders[term]
 		var value: Label = _slider_values[term]
@@ -317,6 +358,9 @@ func _show_picker(slot: String) -> void:
 	_workspace.select_slot(slot)
 	_picker.visible = slot != ""
 	_overview.visible = slot == ""
+	# A selected hardpoint takes over the whole sidebar.
+	for node in _summary_nodes:
+		node.visible = slot == ""
 	if slot == "":
 		return
 	_picker_title.text = (CarSetup.SLOT_LABELS[slot] as String).to_upper()

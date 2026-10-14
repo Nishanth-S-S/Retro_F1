@@ -29,6 +29,8 @@ var _gauge: Art
 var _pause_overlay: Control
 var _shift_box: VBoxContainer
 var _slow_timer := 0.0
+var _map: Art
+var _map_points := PackedVector2Array()
 
 
 func _ready() -> void:
@@ -54,6 +56,7 @@ func setup(race_manager: RaceManager) -> void:
 	var racing := manager.mode == GameManager.MODE_RACE
 	_position_label.visible = racing
 	_board.visible = racing
+	_build_map()
 	_refresh_settings()
 
 
@@ -237,6 +240,12 @@ func _build_pause() -> void:
 		GameManager.save()
 		refresh.call())
 	box.add_child(cam)
+	var panel := DifficultyPanel.new()
+	var diff := UIKit.button("DIFFICULTY: %s" % Difficulty.mode_name(), 14)
+	diff.pressed.connect(func() -> void: panel.open())
+	panel.closed.connect(func() -> void: diff.text = "DIFFICULTY: %s" % Difficulty.mode_name())
+	box.add_child(diff)
+	_root.add_child(panel)
 
 
 # ---------------------------------------------------------------- runtime
@@ -300,6 +309,8 @@ func _process(delta: float) -> void:
 	_lap_label.text = "LAP %d/%d" % [mini(lap_number, GameManager.RACE_LAPS), GameManager.RACE_LAPS] if manager.mode == GameManager.MODE_RACE else "LAP %d" % lap_number
 	_board.queue_redraw()
 	_status.queue_redraw()
+	if _map:
+		_map.queue_redraw()
 
 
 # ---------------------------------------------------------------- widgets
@@ -355,6 +366,62 @@ func _paint_status(a: Control) -> void:
 	y += 24.0
 	var hurt := car.damage / 100.0
 	_bar(a, y, "DAMAGE", hurt, GREEN.lerp(AMBER, clampf(hurt * 2.0, 0.0, 1.0)).lerp(RED, clampf(hurt * 2.0 - 1.0, 0.0, 1.0)))
+
+
+# ---------------------------------------------------------------- track map
+
+const MAP_SIZE := Vector2(176, 132)
+
+
+## Mini map of the circuit, top right under the status bars: every car is a dot.
+func _build_map() -> void:
+	var track := manager.track
+	var b := track.bounds
+	var inner := MAP_SIZE - Vector2(20, 30)
+	var fit := minf(inner.x / maxf(b.size.x, 1.0), inner.y / maxf(b.size.y, 1.0))
+	var origin := Vector2(10, 22) + (inner - b.size * fit) * 0.5
+	_map_points.clear()
+	for i in range(0, track.count, 3):
+		_map_points.append(origin + (track.points[i] - b.position) * fit)
+	_map_points.append(_map_points[0])
+	_map = Art.make(MAP_SIZE, _paint_map)
+	_map.set_meta("fit", fit)
+	_map.set_meta("origin", origin)
+	_map.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_map.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_map.size = MAP_SIZE
+	_map.position = Vector2(-190, 148)
+	_root.add_child(_map)
+
+
+func _paint_map(a: Control) -> void:
+	if manager == null or _map_points.size() < 3:
+		return
+	var f := UIKit.font()
+	a.draw_rect(Rect2(Vector2.ZERO, a.size), Color(0, 0, 0, 0.5))
+	a.draw_rect(Rect2(Vector2.ZERO, a.size), Color(1, 1, 1, 0.25), false, 2.0)
+	a.draw_string(f, Vector2(6, 14), GameManager.TRACK_NAMES.get(GameManager.track_id, "TRACK"), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, WHITE)
+	var wet := manager.weather
+	a.draw_string(f, Vector2(0, 14), WeatherFX.NAMES[wet], HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 6.0, 10, Color("7fd4ff") if wet > 0 else AMBER)
+	a.draw_polyline(_map_points, Color(0, 0, 0, 0.9), 7.0)
+	a.draw_polyline(_map_points, Color(0.9, 0.92, 0.95), 3.0)
+	# Start / finish line.
+	a.draw_rect(Rect2(_map_points[0] - Vector2(3, 3), Vector2(6, 6)), Color.WHITE)
+	a.draw_rect(Rect2(_map_points[0] - Vector2(3, 3), Vector2(3, 3)), Color.BLACK)
+	a.draw_rect(Rect2(_map_points[0], Vector2(3, 3)), Color.BLACK)
+	var fit: float = a.get_meta("fit")
+	var origin: Vector2 = a.get_meta("origin")
+	var b := manager.track.bounds
+	for car in manager.cars:
+		if car == manager.player:
+			continue
+		var p := origin + (car.global_position - b.position) * fit
+		a.draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), Color.BLACK)
+		a.draw_rect(Rect2(p - Vector2(2, 2), Vector2(4, 4)), car.body_color)
+	var me := origin + (manager.player.global_position - b.position) * fit
+	a.draw_rect(Rect2(me - Vector2(5, 5), Vector2(10, 10)), Color.BLACK)
+	a.draw_rect(Rect2(me - Vector2(4, 4), Vector2(8, 8)), RED)
+	a.draw_rect(Rect2(me - Vector2(2, 2), Vector2(4, 4)), WHITE)
 
 
 func _paint_gauge(a: Control) -> void:

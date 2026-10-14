@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Apex Assembly"
+config/name="Retro F1"
 config/description="Build it. Test it. Fix it. Race it."
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")

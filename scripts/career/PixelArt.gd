@@ -8,6 +8,7 @@ const HAIR_COLORS: PackedStringArray = ["2b2118", "6b4423", "c9973f", "b5382a", 
 const HAIR_STYLES: PackedStringArray = ["SHORT", "SWEPT", "LONG", "BUZZ", "BALD", "CURLY", "MOHAWK"]
 const ACCESSORIES: PackedStringArray = ["NONE", "HEADSET", "GLASSES", "SHADES", "CAP", "BEARD", "MOUSTACHE"]
 const OUTFITS: PackedStringArray = ["TEAM POLO", "SUIT", "RACE JACKET", "HOODIE"]
+const FACES: PackedStringArray = ["CLASSIC", "SMILE", "SERIOUS", "WIDE EYED", "SLEEPY", "BIG GRIN", "ROUND"]
 const GRID := 16
 const INK := Color("101418")
 
@@ -20,7 +21,7 @@ static func random_look(seed_value: int, outfit: int = 2) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var extras := [0, 0, 0, 2, 3, 5, 6, 4]
-	return {"skin": rng.randi() % SKIN.size(), "hair": rng.randi() % HAIR_STYLES.size(), "hair_color": rng.randi() % HAIR_COLORS.size(), "accessory": extras[rng.randi() % extras.size()], "outfit": outfit}
+	return {"skin": rng.randi() % SKIN.size(), "hair": rng.randi() % HAIR_STYLES.size(), "hair_color": rng.randi() % HAIR_COLORS.size(), "accessory": extras[rng.randi() % extras.size()], "outfit": outfit, "face": rng.randi() % FACES.size()}
 
 
 static func _px(canvas: CanvasItem, origin: Vector2, cell: float, x: int, y: int, w: int, h: int, color: Color) -> void:
@@ -96,6 +97,40 @@ static func draw_portrait(canvas: CanvasItem, rect: Rect2, look: Dictionary, tea
 	_px(canvas, o, cell, 8, 7, 1, 2, shade)              # nose
 	_px(canvas, o, cell, 6, 9, 4, 1, Color("8a3b34"))    # mouth
 	_px(canvas, o, cell, 7, 9, 2, 1, Color("f3e9e2"))
+	# --- face shape and expression
+	var mouth := Color("8a3b34")
+	match int(look.get("face", 0)) % FACES.size():
+		1:      # smile: wider mouth with the corners turned up
+			_px(canvas, o, cell, 5, 9, 6, 1, mouth)
+			_px(canvas, o, cell, 7, 9, 2, 1, Color("f3e9e2"))
+			_hp(canvas, o, cell, 10, 17, 1, 1, mouth)
+			_hp(canvas, o, cell, 21, 17, 1, 1, mouth)
+		2:      # serious: low angled brows and a flat, thin mouth
+			_hp(canvas, o, cell, 13, 11, 2, 1, hair.darkened(0.2))
+			_hp(canvas, o, cell, 17, 11, 2, 1, hair.darkened(0.2))
+			_px(canvas, o, cell, 6, 9, 4, 1, skin)
+			_hp(canvas, o, cell, 12, 19, 8, 1, mouth)
+		3:      # wide eyed: tall eyes, raised brows
+			_px(canvas, o, cell, 5, 5, 2, 1, Color.WHITE)
+			_px(canvas, o, cell, 9, 5, 2, 1, Color.WHITE)
+			_px(canvas, o, cell, 6, 5, 1, 2, INK)
+			_px(canvas, o, cell, 10, 5, 1, 2, INK)
+			_px(canvas, o, cell, 5, 4, 2, 1, hair.darkened(0.2))
+			_px(canvas, o, cell, 9, 4, 2, 1, hair.darkened(0.2))
+		4:      # sleepy: heavy lids and bags under the eyes
+			_hp(canvas, o, cell, 10, 12, 4, 1, shade)
+			_hp(canvas, o, cell, 18, 12, 4, 1, shade)
+			_hp(canvas, o, cell, 10, 14, 4, 1, skin.darkened(0.3))
+			_hp(canvas, o, cell, 18, 14, 4, 1, skin.darkened(0.3))
+			_px(canvas, o, cell, 7, 9, 2, 1, mouth)
+		5:      # big grin: open mouth full of teeth
+			_px(canvas, o, cell, 5, 9, 6, 2, mouth)
+			_px(canvas, o, cell, 6, 9, 4, 1, Color.WHITE)
+		6:      # round: full cheeks and a small mouth
+			_px(canvas, o, cell, 3, 7, 1, 3, skin)
+			_px(canvas, o, cell, 12, 7, 1, 3, shade)
+			_px(canvas, o, cell, 6, 9, 4, 1, skin)
+			_px(canvas, o, cell, 7, 9, 2, 1, mouth)
 	# --- fine detail (half pixels): rounded jaw, eye shine, lids, blush, nostrils, lip light
 	var lower_bg := background.darkened(0.18)
 	_hp(canvas, o, cell, 8, 20, 1, 2, lower_bg)
@@ -394,3 +429,169 @@ static func draw_lamp(canvas: CanvasItem, pos: Vector2, px: float) -> void:
 	_px(canvas, pos, px, 5, 0, 2, 4, Color("3a3d44"))
 	_px(canvas, pos, px, 1, 4, 10, 2, Color("d7dbe0"))
 	_px(canvas, pos, px, 0, 6, 12, 1, Color("fff3b0"))
+
+
+# ---------------------------------------------------------------- car parts
+
+const METAL := Color("8b95a3")
+const METAL_LIGHT := Color("c9ced6")
+const METAL_DARK := Color("4a515c")
+const TIRE := Color("16181c")
+
+
+## 16x16 pixel icon of a car part. The drawing follows the part's numbers: more cylinders
+## for bigger engines, more elements for bigger wings, the compound colour on a tire...
+static func draw_part(canvas: CanvasItem, rect: Rect2, part: VehiclePart, accent: Color = Color("c8201e")) -> void:
+	var fit := _fit(rect)
+	var c: float = fit[0]
+	var o: Vector2 = fit[1]
+	canvas.draw_rect(Rect2(o, Vector2(c, c) * GRID), Color("e8ece7"))
+	_px(canvas, o, c, 0, 13, 16, 3, Color("d3dad3"))
+	if part == null:
+		canvas.draw_rect(Rect2(o, Vector2(c, c) * GRID), INK, false, maxf(2.0, c * 0.3))
+		return
+	match part.category:
+		"engine":
+			var bank := clampi(int(part.display_name.right(1)) / 2, 2, 4)
+			var w := bank * 3 + 1
+			var x0 := (16 - w) / 2
+			_px(canvas, o, c, x0, 6, w, 7, METAL_DARK)                      # block
+			_px(canvas, o, c, x0, 6, w, 1, METAL)
+			_px(canvas, o, c, x0 - 1, 11, w + 2, 2, INK)                    # sump
+			for i in bank:
+				_px(canvas, o, c, x0 + 1 + i * 3, 3, 2, 3, accent)          # cam covers
+				_px(canvas, o, c, x0 + 1 + i * 3, 3, 2, 1, accent.lightened(0.35))
+				_px(canvas, o, c, x0 + 1 + i * 3, 8, 2, 2, METAL_LIGHT)     # exhaust ports
+			_px(canvas, o, c, x0 + w, 8, 2, 1, METAL_LIGHT)                 # exhaust
+			_px(canvas, o, c, x0 + w + 1, 8, 1, 4, METAL_LIGHT)
+			if part.id.contains("turbo"):
+				_px(canvas, o, c, 1, 7, 3, 3, Color("ff9d3c"))
+				_px(canvas, o, c, 2, 8, 1, 1, INK)
+		"gearbox":
+			_px(canvas, o, c, 3, 5, 10, 7, Color("7a6f58"))
+			_px(canvas, o, c, 3, 5, 10, 1, Color("a59876"))
+			_px(canvas, o, c, 2, 7, 1, 3, INK)
+			_px(canvas, o, c, 13, 8, 2, 1, METAL_LIGHT)                     # output shaft
+			var gears := 3 if part.stat("shift_time", 0.2) > 0.1 else 4
+			for i in gears:
+				var gx := 4 + i * (8 / gears)
+				_px(canvas, o, c, gx, 7, 1, 4, INK)
+				_px(canvas, o, c, gx, 6 + i % 2, 1, 1, Color("f5c542"))
+			_px(canvas, o, c, 7, 2, 2, 3, METAL)                            # selector
+			_px(canvas, o, c, 6, 1, 4, 1, accent)
+		"front_wing", "rear_wing":
+			var elements := clampi(int(round(part.stat("downforce_coefficient", 0.8) / 0.42)), 1, 4)
+			var rear := part.category == "rear_wing"
+			_px(canvas, o, c, 1, 3, 2, 10, accent)                          # endplates
+			_px(canvas, o, c, 13, 3, 2, 10, accent)
+			_px(canvas, o, c, 1, 3, 2, 1, accent.lightened(0.35))
+			_px(canvas, o, c, 13, 3, 2, 1, accent.lightened(0.35))
+			for i in elements:
+				var y := 11 - i * 2
+				_px(canvas, o, c, 3, y, 10, 1, INK)
+				_px(canvas, o, c, 3, y - 1, 10, 1, Color("2d3138") if i % 2 == 0 else METAL_DARK)
+			if rear:
+				_px(canvas, o, c, 6, 12, 1, 2, METAL)                        # pylons
+				_px(canvas, o, c, 9, 12, 1, 2, METAL)
+			else:
+				_px(canvas, o, c, 7, 10, 2, 4, accent.darkened(0.2))         # nose
+		"suspension":
+			var thick := 2 if part.stat("spring_rate", 120.0) > 130.0 else 1
+			_px(canvas, o, c, 2, 3, 3, 10, TIRE)                             # wheel
+			_px(canvas, o, c, 3, 5, 1, 6, METAL_DARK)
+			for i in 8:                                                      # wishbones
+				_px(canvas, o, c, 5 + i, 5 + i / 3, 1, thick, METAL_LIGHT)
+				_px(canvas, o, c, 5 + i, 11 - i / 3, 1, thick, METAL_LIGHT)
+			var coil := accent if part.id.contains("stiff") else (Color("2e9e5b") if part.id.contains("soft") else Color("f5c542"))
+			for i in 4:                                                      # spring
+				_px(canvas, o, c, 8 + i, 7 + i % 2, 1, 2, coil)
+			_px(canvas, o, c, 13, 4, 2, 9, METAL_DARK)                       # chassis mount
+		"brakes":
+			var disc: Color = CarVisual.BRAKE_COLORS.get(part.id, METAL)
+			_px(canvas, o, c, 5, 2, 6, 1, disc)
+			_px(canvas, o, c, 3, 3, 10, 2, disc)
+			_px(canvas, o, c, 2, 5, 12, 6, disc)
+			_px(canvas, o, c, 3, 11, 10, 2, disc)
+			_px(canvas, o, c, 5, 13, 6, 1, disc)
+			_px(canvas, o, c, 6, 6, 4, 4, INK)                               # hub
+			_px(canvas, o, c, 7, 7, 2, 2, METAL_LIGHT)
+			for hole: Array in [[4, 5], [11, 5], [4, 10], [11, 10], [7, 3], [8, 12]]:
+				_px(canvas, o, c, hole[0], hole[1], 1, 1, INK)
+			_px(canvas, o, c, 11, 6, 4, 5, accent)                           # calliper
+			_px(canvas, o, c, 12, 7, 2, 3, accent.lightened(0.3))
+		"tires":
+			var band: Color = CarVisual.COMPOUND_COLORS.get(part.id, Color.WHITE)
+			_px(canvas, o, c, 5, 1, 6, 1, TIRE)
+			_px(canvas, o, c, 3, 2, 10, 2, TIRE)
+			_px(canvas, o, c, 2, 4, 12, 8, TIRE)
+			_px(canvas, o, c, 3, 12, 10, 2, TIRE)
+			_px(canvas, o, c, 5, 14, 6, 1, TIRE)
+			_px(canvas, o, c, 4, 3, 8, 1, band)                              # compound band
+			_px(canvas, o, c, 3, 4, 1, 8, band)
+			_px(canvas, o, c, 12, 4, 1, 8, band)
+			_px(canvas, o, c, 4, 12, 8, 1, band)
+			_px(canvas, o, c, 5, 5, 6, 6, METAL_DARK)                        # rim
+			_px(canvas, o, c, 7, 7, 2, 2, METAL_LIGHT)
+			_px(canvas, o, c, 5, 7, 2, 1, METAL)
+			_px(canvas, o, c, 9, 8, 2, 1, METAL)
+		"chassis":
+			var bulky := part.mass > 280.0
+			_px(canvas, o, c, 7, 1, 2, 3, accent)                            # nose
+			_px(canvas, o, c, 6, 4, 4, 3, accent)
+			_px(canvas, o, c, 4 if bulky else 5, 7, 8 if bulky else 6, 6, accent)   # tub and sidepods
+			_px(canvas, o, c, 6, 13, 4, 2, accent.darkened(0.3))
+			_px(canvas, o, c, 7, 1, 1, 12, accent.lightened(0.3))            # highlight
+			_px(canvas, o, c, 7, 6, 2, 3, INK)                               # cockpit
+			if part.id.contains("light"):
+				for i in 3:                                                  # carbon weave
+					_px(canvas, o, c, 5 + i * 2, 10, 1, 1, INK)
+					_px(canvas, o, c, 6 + i * 2, 11, 1, 1, INK)
+		"ballast":
+			var plates := clampi(int(part.mass / 10.0), 0, 3)
+			if plates == 0:
+				_px(canvas, o, c, 4, 7, 8, 1, METAL)
+				_px(canvas, o, c, 4, 11, 8, 1, METAL)
+				_px(canvas, o, c, 4, 7, 1, 5, METAL)
+				_px(canvas, o, c, 11, 7, 1, 5, METAL)
+			for i in plates:
+				var y := 11 - i * 3
+				_px(canvas, o, c, 3, y, 10, 2, Color("f5c542"))
+				_px(canvas, o, c, 3, y, 10, 1, Color("ffe07a"))
+				_px(canvas, o, c, 3, y + 2, 10, 1, INK)
+				_px(canvas, o, c, 5, y, 1, 2, INK)
+				_px(canvas, o, c, 10, y, 1, 2, INK)
+	canvas.draw_rect(Rect2(o, Vector2(c, c) * GRID), INK, false, maxf(2.0, c * 0.3))
+
+
+## Wind-tunnel fan seen head-on: a ring with blades that turn with `spin` (radians).
+static func draw_fan(canvas: CanvasItem, centre: Vector2, radius: float, spin: float) -> void:
+	var step := maxf(4.0, radius / 8.0)
+	var n := int(radius / step)
+	for y in range(-n, n + 1):
+		for x in range(-n, n + 1):
+			var p := Vector2(x, y) * step
+			var d := p.length()
+			if d > radius:
+				continue
+			var color := Color("23272e")
+			if d > radius - step * 1.5:
+				color = Color("8b95a3")
+			elif d < step * 1.6:
+				color = Color("c8201e")
+			elif fposmod(p.angle() - spin, TAU / 5.0) < TAU / 12.0:
+				color = Color("c9ced6")
+			canvas.draw_rect(Rect2(centre + p - Vector2(step, step) * 0.5, Vector2(step, step)), color)
+
+
+## Tiny weather badge: sun, cloud with drops, or storm cloud.
+static func draw_weather(canvas: CanvasItem, pos: Vector2, px: float, weather: int) -> void:
+	if weather <= 0:
+		_px(canvas, pos, px, 3, 3, 4, 4, Color("f5c542"))
+		for ray: Array in [[4, 0], [4, 8], [0, 4], [8, 4], [1, 1], [8, 1], [1, 8], [8, 8]]:
+			_px(canvas, pos, px, ray[0], ray[1], 1, 1, Color("f5c542"))
+		return
+	var cloud := Color("c9ced6") if weather == 1 else Color("6a7078")
+	_px(canvas, pos, px, 2, 1, 5, 2, cloud)
+	_px(canvas, pos, px, 0, 3, 10, 3, cloud)
+	for i in (2 if weather == 1 else 4):
+		_px(canvas, pos, px, 1 + i * (4 if weather == 1 else 2), 7 + i % 2, 1, 2, Color("2f6fde"))

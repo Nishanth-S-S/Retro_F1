@@ -58,7 +58,8 @@ func setup(entries: Array, round_info: Dictionary, pit_level: int, seed_value: i
 		car["quali"] = _pace(car) + _rng.randfn(0.0, 0.25)
 	cars.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["quali"] < b["quali"])
 	for i in cars.size():
-		cars[i]["total"] = i * 0.35
+		# Grid slot, plus or minus the launch off the line.
+		cars[i]["total"] = i * 0.35 - (float(cars[i].get("starts", 75.0)) - 75.0) * 0.012
 		cars[i]["position"] = i + 1
 		if not cars[i]["is_player"]:
 			var roll := _rng.randf()
@@ -83,7 +84,8 @@ func order() -> Array[Dictionary]:
 
 
 func _pace(car: Dictionary) -> float:
-	return BASE_LAP - (float(car["car"]) - 75.0) * 0.07 - (float(car["pace"]) - 75.0) * 0.045 - (float(car["morale"]) - 50.0) * 0.004
+	# "form" is what the driver finds at this circuit: home race, favourite kind of track.
+	return BASE_LAP - (float(car["car"]) - 75.0) * 0.07 - (float(car["pace"]) - 75.0) * 0.045 - (float(car["morale"]) - 50.0) * 0.004 - float(car.get("form", 0.0))
 
 
 static func tire_wear_fraction(car: Dictionary) -> float:
@@ -101,6 +103,8 @@ func step() -> void:
 		return
 	messages.clear()
 	_update_weather()
+	if weather > 0:
+		flags["wet"] = true
 	var sc_now := safety_car > 0
 	var previous: Array[Dictionary] = cars.duplicate()
 	for car in cars:
@@ -126,7 +130,9 @@ func step() -> void:
 				_say("%s pits for %s (%.1f s)" % [_short(car), COMPOUNDS[car["tire"]]["name"], loss])
 		car["last"] = lap_time
 		car["total"] = float(car["total"]) + lap_time
-		car["age"] = float(car["age"]) + MODE_WEAR[car["mode"]] * _wear * (0.4 if sc_now else 1.0)
+		# Drivers who look after their tyres stretch a stint; the heavy-footed burn through it.
+		var care := 1.0 - (float(car.get("tyres", 75.0)) - 75.0) / 170.0
+		car["age"] = float(car["age"]) + MODE_WEAR[car["mode"]] * _wear * care * (0.4 if sc_now else 1.0)
 		_incidents(car, sc_now)
 	if sc_now:
 		_bunch_field()
@@ -166,6 +172,8 @@ func _lap_time(car: Dictionary, sc_now: bool) -> float:
 	if age > float(compound["life"]):
 		t += 0.55 * (age - float(compound["life"]))          # the cliff
 	t += float(WEATHER_LOSS[car["tire"]][weather])
+	# Rain separates the wet-weather specialists from everyone else.
+	t -= (float(car.get("wet", 75.0)) - 75.0) * 0.022 * weather
 	t += MODE_PACE[car["mode"]]
 	t += _rng.randfn(0.0, 0.12 + (100.0 - float(car["consistency"])) * 0.012)
 	return t
@@ -177,6 +185,8 @@ func _incidents(car: Dictionary, sc_now: bool) -> void:
 	var wrong_tire: bool = float(WEATHER_LOSS[car["tire"]][weather]) >= 6.0
 	var risk := 0.004 * (1.0 + (1.5 if car["mode"] == 2 else 0.0) + weather * 1.5) + (0.05 if wrong_tire and weather > 0 else 0.0)
 	risk *= 1.0 + (100.0 - float(car["consistency"])) / 60.0
+	if weather > 0:
+		risk *= 1.0 + (75.0 - float(car.get("wet", 75.0))) / 45.0
 	if _rng.randf() < risk:
 		if _rng.randf() < 0.35:
 			_retire(car, "crashes out")
@@ -263,7 +273,8 @@ func _resolve_battles(previous: Array[Dictionary]) -> void:
 			behind["status"] = "HELD"
 			continue
 		var advantage := float(ahead["total"]) - float(behind["total"])
-		var chance := clampf(0.3 + advantage * 0.35 + (float(behind["racecraft"]) - float(ahead["racecraft"])) / 150.0, 0.08, 0.92)
+		var chance := clampf(0.3 + advantage * 0.35 + (float(behind["racecraft"]) - float(ahead["racecraft"])) / 150.0
+			+ (float(behind.get("overtaking", 75.0)) - float(ahead.get("defending", 75.0))) / 220.0, 0.08, 0.92)
 		if teammates:
 			# Letting them race risks contact; big egos make it worse.
 			var clash := 0.04 + maxf(0.0, float(behind["ego"]) + float(ahead["ego"]) - 100.0) / 900.0

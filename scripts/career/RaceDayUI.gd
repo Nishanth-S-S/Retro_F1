@@ -44,6 +44,15 @@ func _ready() -> void:
 	right.add_child(info)
 	info.body.add_child(UIKit.label("%d LAPS   ·   %s NOW   ·   RAIN CHANCE %d%%" % [_sim.laps, GPSim.WEATHER_NAMES[_sim.weather], int(float(round_info["rain"]) * 100.0)], 15))
 	info.body.add_child(UIKit.label("CAR %d   ·   TEAM %d   ·   BOARD WANTS: %s" % [int(Career.car_rating(Career.state()["team"])), Career.team_rating(Career.state()["team"]), Career.board_target_text().to_upper()], 13, UIKit.TEXT_DIM))
+	var track_id := Career.round_track()
+	info.body.add_child(UIKit.label("%s   ·   %s CIRCUIT" % [TrackTheme.label(track_id), Career.TRACK_TYPES.get(track_id, "")], 13, UIKit.TEXT_DIM))
+	for car in _sim.player_cars():
+		var d := Career.driver(car["id"])
+		var machine := Career.car_for(car["id"])
+		var note := Career.form_note(d, track_id) if Career.scout_level(d) >= 3 else ""
+		var faults := Career.car_violations(machine)
+		var line := "%s: %s, FIT %d%s%s" % [str(d["name"]).get_slice(" ", 1).to_upper(), machine["name"], Career.car_fit(d, machine), ("   ·   " + note) if note != "" else "", "   ·   CAR IS ILLEGAL" if not faults.is_empty() else ""]
+		info.body.add_child(UIKit.label(line, 12, UIKit.BAD if not faults.is_empty() or note.begins_with("STRUGGLES") else UIKit.GOOD))
 	var options := Frame.make("RACE OPTIONS", 10)
 	options.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(options)
@@ -69,10 +78,27 @@ func _ready() -> void:
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.custom_minimum_size = Vector2(300, 0)
 	options.body.add_child(hint)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 10)
+	root.add_child(foot)
 	var back := UIKit.button("<-  BACK TO HQ", 18)
 	back.custom_minimum_size = Vector2(0, 60)
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	back.pressed.connect(func() -> void: SceneManager.goto("career"))
-	root.add_child(back)
+	foot.add_child(back)
+	var panel := DifficultyPanel.new()
+	var diff := UIKit.button("DIFFICULTY: %s" % Difficulty.mode_name(), 16)
+	diff.custom_minimum_size = Vector2(340, 60)
+	diff.pressed.connect(func() -> void: panel.open())
+	foot.add_child(diff)
+	add_child(panel)
+	# Rival pace is baked into the grid, so a change re-runs qualifying.
+	var pace_before := Difficulty.sim_car_bonus()
+	panel.closed.connect(func() -> void:
+		diff.text = "DIFFICULTY: %s" % Difficulty.mode_name()
+		if not is_equal_approx(pace_before, Difficulty.sim_car_bonus()):
+			Career.clear_weekend()
+			SceneManager.goto("raceday"))
 
 
 func _draw() -> void:

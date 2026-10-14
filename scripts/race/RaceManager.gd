@@ -56,6 +56,9 @@ var _objective_done := false
 ## Seconds left in the current pit stop (0 = not in the pits).
 var pit_timer := 0.0
 var _pit_total := 0.0
+## 0 dry, 1 light rain, 2 heavy rain.
+var weather := 0
+var _assist_profile := PackedFloat32Array()
 
 
 func _ready() -> void:
@@ -74,6 +77,11 @@ func _ready() -> void:
 		track_node.name = "Track"
 		add_child(track_node)
 	track = track_node.data
+	weather = clampi(GameManager.session_weather, 0, 2)
+	track_node.set_wet(weather)
+	var rain := WeatherFX.new()
+	rain.level = weather
+	add_child(rain)
 	line = RacingLine.build(track)
 	var line_path := Path2D.new()
 	line_path.name = "RacingLinePath"
@@ -109,6 +117,8 @@ func _ready() -> void:
 	add_child(debug)
 	EventBus.settings_changed.connect(_apply_settings)
 	_apply_settings()
+	if weather > 0:
+		EventBus.driver_message.emit("%s  -  LOW GRIP" % WeatherFX.NAMES[weather], Color("7fd4ff"))
 	_camera.snap_to_target()
 	positions.update(cars, timers, track.length)
 	_countdown = 3.6 if mode == GameManager.MODE_RACE else 1.2
@@ -140,6 +150,10 @@ func _spawn_cars() -> void:
 	player_timer.lap_invalidated.connect(func() -> void: EventBus.driver_message.emit("LAP INVALID  ·  TRACK LIMITS", Color("ff5d5d")))
 	player.collided.connect(func(strength: float) -> void: _camera.add_shake(2.0 + strength * 7.0))
 	player.takes_damage = true
+	player.damage_scale = Difficulty.damage_scale()
+	player.wet = weather > 0
+	# Conservative line speeds for the braking aid, on today's grip.
+	_assist_profile = line.speed_profile(player.physics.stats, player.physics_config, (0.93 if weather == 0 else 0.86) * WeatherFX.grip(weather), 0.85 if weather == 0 else 0.75)
 	player.uses_fuel = mode == GameManager.MODE_RACE
 	player.damaged.connect(_on_player_damaged)
 	player.destroyed.connect(_on_player_destroyed)
@@ -159,12 +173,20 @@ func _spawn_cars() -> void:
 		var profile: Dictionary = profiles[i]
 		if slot == PLAYER_GRID_SLOT:
 			slot += 1
+		# Difficulty shifts every rival's pace; rain costs grip, more for poor wet-weather drivers.
+		profile = profile.duplicate()
+		profile["pace"] = clampf(float(profile.get("pace", 0.92)) + Difficulty.ai_pace_offset(), 0.8, 1.0)
+		profile["aggression"] = clampf(float(profile.get("aggression", 0.5)) * Difficulty.ai_aggression_scale(), 0.1, 1.0)
+		# In the wet everyone leaves a margin; the rain specialists leave less of one.
+		profile["track_grip"] = WeatherFX.grip(weather) * (lerpf(0.84, 0.93, float(profile.get("wet", 0.75))) if weather > 0 else 1.0)
 		var setup := _ai_setup(profile.get("setup", {}))
 		var car := _make_car(setup, profile["name"], Color(profile.get("color", "#ffffff")), false, i + 1, "res://scenes/components/AICar.tscn", Color(str(profile.get("color2", "#23272e"))))
 		_place_on_grid(car, slot)
 		var driver := AIDriver.new()
 		driver.name = "Driver"
 		car.add_child(driver)
+		car.physics.grip_scale = WeatherFX.grip(weather)
+		car.wet = weather > 0
 		driver.setup(car, line, profile, 1000 + i * 77 + randi() % 1000)
 		driver.needs_recovery.connect(_recover_car)
 		drivers.append(driver)
@@ -228,6 +250,8 @@ func _apply_settings() -> void:
 	player.physics.tc_level = int(GameManager.setting("traction_control"))
 	player.physics.transmission.automatic = bool(GameManager.setting("automatic"))
 	player.physics.stability_assist = 1.0 if bool(GameManager.setting("stability_assist")) else 0.0
+	player.physics.grip_scale = WeatherFX.grip(weather) * Difficulty.player_grip()
+	player.damage_scale = Difficulty.damage_scale()
 	_line_assist.visible = bool(GameManager.setting("racing_line"))
 	_camera.rotate_with_car = bool(GameManager.setting("camera_rotation"))
 
@@ -301,10 +325,43 @@ func _update_player(delta: float) -> void:
 			_ghost.rotation = rot
 			_ghost.global_position = (_ghost_sample["position"] as Vector2) - Vector2.RIGHT.rotated(rot) * player.physics.stats.cg_x * PPM
 	_driver_feedback(delta)
+	_update_assists()
 	_update_pit_stop(delta)
 	if state == State.RACING and not _objective_done and _mission.get("objective", {}).get("type", "") == "max_speed":
 		if player.speed * 3.6 >= float(_mission["objective"]["target"]):
 			_complete_objective()
+
+
+# ---------------------------------------------------------------- driving aids
+
+## Steering and braking help from the difficulty settings: the car is nudged toward the
+## racing line and slowed when it arrives at a corner too fast. The player keeps control;
+## the aids are blended in, never substituted.
+func _update_assists() -> void:
+	var steer_help := Difficulty.steer_assist()
+	var brake_help := Difficulty.brake_assist()
+	player.assist_steer_weight = 0.0
+	player.assist_brake = 0.0
+	if state != State.RACING or (steer_help <= 0.0 and brake_help <= 0.0) or _assist_profile.is_empty():
+		return
+	if track.in_pit_lane(player.progress, player.lateral) or player.physics.transmission.gear < 0:
+		return
+	var idx := player.track_index
+	var v := player.speed
+	if steer_help > 0.0 and v > 4.0:
+		var look := idx + int((9.0 + v * 0.4) / track.spacing)
+		var to_target := (line.point(look) - player.global_position).rotated(-player.rotation) / PPM
+		var dist := maxf(to_target.length(), 1.0)
+		var wheel := atan(2.0 * player.physics_config.wheelbase * to_target.y / (dist * dist))
+		player.assist_steer = clampf(wheel / player.physics_config.max_steer_angle(v), -1.0, 1.0)
+		player.assist_steer_weight = steer_help
+	if brake_help > 0.0:
+		var target := INF
+		for k in range(0, int(v * 0.25 / track.spacing) + 2):
+			target = minf(target, _assist_profile[posmod(idx + k, _assist_profile.size())])
+		var over := v - target * 1.03
+		if over > 0.0:
+			player.assist_brake = clampf(over * 0.22, 0.0, 1.0) * brake_help
 
 
 # ---------------------------------------------------------------- pit stops
