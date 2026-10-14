@@ -15,6 +15,8 @@ var _modal: Control
 ## Scouting page: false = free agents and juniors, true = rival drivers with release clauses.
 var _show_rivals := false
 var _day_button: Button
+## Controls the HQ tutorial points at.
+var _marks: Dictionary = {}
 
 
 func _ready() -> void:
@@ -66,6 +68,17 @@ func _ready() -> void:
 	bar.add_child(HubPanels.press_anim(_day_button))
 	EventBus.money_changed.connect(func(_a: int) -> void: _build_header())
 	_show_tab(0)
+	_marks["phone"] = _header.get_child(_header.get_child_count() - 1)
+	CoachMarks.run_once(self, "hq", func() -> Array: return [
+		[null, "This is TEAM HQ. You're the team principal - everything starts here."],
+		[_marks["today"], "TODAY: the date and what's on. Race weekends are practice Friday, qualifying Saturday, race Sunday."],
+		[_day_button, "This button shows today's job - PRACTICE, QUALIFYING or RACE. Once it's done it says NEXT: tap it to sim a day, a week, a month or to the next race."],
+		[_marks["coach"], "You. Tap your card for your contract, rating, history and teams that want you."],
+		[_marks["hire"], "Hire engineers and staff. Better engineers bring more research points every week."],
+		[_tab_buttons[1], "DRIVERS: your race drivers and reserves. Tap a card to train, swap or release them."],
+		[_tab_buttons[2], "SCOUTING: scout young talent and sign drivers - or buy stars out of their contracts."],
+		[_marks["phone"], "Your PHONE: messages, offers and rival teams trying to poach your people."],
+	])
 	if Career.last_note != "":
 		_say(Career.last_note)
 		Career.last_note = ""
@@ -113,23 +126,35 @@ func _build_header() -> void:
 	_header.add_child(phone)
 
 
+## Bottom-right button: today's job until it is done (PRACTICE, QUALIFYING, RACE), then NEXT.
 func _refresh_day_button() -> void:
-	match str(Career.day_event()["type"]):
-		"race":
-			_day_button.text = "RACE  >"
-		"quali":
-			_day_button.text = "QUALIFYING  >"
-		_:
-			_day_button.text = "NEXT DAY  >"
+	var kind := str(Career.day_event()["type"])
+	if Career.day_done():
+		_day_button.text = "NEXT  >"
+	elif kind == "race":
+		_day_button.text = "RACE  >"
+	elif kind == "quali":
+		_day_button.text = "QUALIFYING  >"
+	else:
+		_day_button.text = "PRACTICE  >"
 
 
 func _on_day_button() -> void:
 	var kind := str(Career.day_event()["type"])
-	if kind == "race" or kind == "quali":
-		SceneManager.goto("raceday")
+	if not Career.day_done():
+		if kind == "race" or kind == "quali":
+			SceneManager.goto("raceday")
+		else:
+			HubPanels.practice_sheet(self)
 		return
-	Career.next_day()
-	_show_tab(_tab)
+	var picker := SimPicker.new()
+	add_child(picker)
+	picker.chosen.connect(func(span: String) -> void:
+		var before := Career.date_text()
+		var moved := Career.sim_ahead(span)
+		if moved > 0:
+			DayTransition.play(self, before, Career.date_text(), moved)
+		_show_tab(_tab))
 
 
 func _show_tab(index: int) -> void:
@@ -202,26 +227,15 @@ func _tab_hq() -> void:
 	# --- today: the date, what is on, the news, and moving time on
 	var event := Career.day_event()
 	var next := _card(row, "SEASON %d  ·  ROUND %d / %d" % [int(c["season"]), int(c["round"]) + 1, Career.calendar.size()])
+	_marks["today"] = next.get_parent()
 	_text(next, Career.date_text(), 30)
 	_text(next, Career.day_title(event), 18, UIKit.HOT)
 	var round_info := Career.next_round()
 	var until := Career.race_day(int(c["round"])) - Career.today()
 	_text(next, "NEXT: %s  ·  %s  ·  %s" % [str(round_info["name"]).to_upper(), Career.format_label(round_info), "TODAY" if until == 0 else "IN %d DAY%s" % [until, "" if until == 1 else "S"]], 15, UIKit.TEXT_DIM)
 	var kind := str(event["type"])
-	if kind == "practice" or kind == "test":
-		next.add_child(_big("RUN PRACTICE" if not Career.practice_done() else "PRACTICE DONE", true, func() -> void: HubPanels.practice_sheet(self), 18, 56.0))
-		(next.get_child(next.get_child_count() - 1) as Button).disabled = Career.practice_done()
-	var sims := HBoxContainer.new()
-	sims.add_theme_constant_override("separation", 6)
-	next.add_child(sims)
-	for info: Array in [["+1 WEEK", "week"], ["TO NEXT RACE", "race"], ["+1 MONTH", "month"]]:
-		var span: String = info[1]
-		var b := _big(info[0], false, func() -> void:
-			var moved := Career.sim_ahead(span)
-			_say("%d DAYS LATER  ·  %s" % [moved, Career.date_text()])
-			_show_tab(0), 15, 50.0)
-		b.disabled = kind == "race"
-		sims.add_child(HubPanels.press_anim(b))
+	if (kind == "practice" or kind == "test") and not Career.practice_done():
+		next.add_child(HubPanels.press_anim(_big("RUN PRACTICE", true, func() -> void: HubPanels.practice_sheet(self), 18, 56.0)))
 	var latest: Array = Career.news().slice(0, 2)
 	for item: Dictionary in latest:
 		_text(next, "NEWS  %s:  %s" % [Career.date_text(int(item["day"])), item["text"]], 13, UIKit.TEXT_DIM)
@@ -236,6 +250,7 @@ func _tab_hq() -> void:
 		_text(next, "  ·  ".join(alerts.slice(0, 3)), 15, UIKit.BAD)
 	# --- the coach (you): tap for contract, rating, history and offers
 	var me := _card(row, "SEASON %d" % int(c["season"]))
+	_marks["coach"] = me.get_parent()
 	var manager: Dictionary = c["manager"]
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 14)
@@ -272,6 +287,7 @@ func _tab_hq() -> void:
 	for id: String in Career.engineers():
 		roster.add_child(_staff_tile(id))
 	var hire := UIKit.button("+ HIRE", 22, true)
+	_marks["hire"] = hire
 	hire.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hire.custom_minimum_size = Vector2(150, 150)
 	hire.pressed.connect(func() -> void: HubPanels.staff_sheet(self))

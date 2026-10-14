@@ -36,6 +36,9 @@ var _driver_view := false
 var _tyres: HFlowContainer
 var _tyre_note: Label
 var _drs: Button
+var _hit: ColorRect
+## Controls the race tutorial points at.
+var marks: Dictionary = {}
 var _map_points := PackedVector2Array()
 
 
@@ -134,10 +137,12 @@ func _build_top_right() -> void:
 		GameManager.set_setting("camera_mode", 1 - int(GameManager.setting("camera_mode")))
 		GameManager.save())
 	box.add_child(cam)
+	marks["cam"] = cam
 	var reset := UIKit.button("RESET", 14)
 	reset.custom_minimum_size = Vector2(80, 46)
 	reset.pressed.connect(func() -> void: manager.reset_player())
 	box.add_child(reset)
+	marks["reset"] = reset
 	var pause := UIKit.button("II", 16)
 	pause.custom_minimum_size = Vector2(52, 46)
 	pause.pressed.connect(func() -> void: manager.toggle_pause())
@@ -196,8 +201,13 @@ func _build_bottom() -> void:
 	_drs.size = Vector2(176, 66)
 	_drs.position = Vector2(-190, 292)
 	_drs.pressed.connect(func() -> void: manager.open_drs())
-	_drs.visible = false
+	_drs.visible = GameManager.session_mode == GameManager.MODE_RACE
 	_root.add_child(_drs)
+	_hit = ColorRect.new()
+	_hit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hit.color = Color(0.9, 0.1, 0.05, 0.0)
+	_root.add_child(_hit)
 	# Manual shift buttons, reachable by the right thumb beside the pedal.
 	_shift_box = VBoxContainer.new()
 	_shift_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -505,6 +515,12 @@ func show_tyre_choice(options: Array, chosen: String, required: bool) -> void:
 		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(band)
 		_tyres.add_child(b)
+
+
+## A red flash on impact, stronger for harder hits.
+func flash_hit(strength: float) -> void:
+	_hit.color.a = 0.12 + 0.3 * clampf(strength, 0.0, 1.0)
+	create_tween().tween_property(_hit, "color:a", 0.0, 0.35)
 
 
 func set_driver_view(on: bool) -> void:

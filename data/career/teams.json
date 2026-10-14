@@ -6,9 +6,9 @@
   "color": "#ff8000",
   "color2": "#1f2a3a",
   "logo": "ring",
-  "car": 90,
+  "car": 87,
   "budget": 60000,
-  "expectation": 1,
+  "expectation": 3,
   "owner": "an investment consortium"
  },
  {
@@ -18,9 +18,9 @@
   "color": "#dc1a1a",
   "color2": "#ffd400",
   "logo": "shield",
-  "car": 87,
+  "car": 89,
   "budget": 58000,
-  "expectation": 3,
+  "expectation": 2,
   "owner": "a historic family board"
  },
  {
@@ -42,9 +42,9 @@
   "color": "#00bfae",
   "color2": "#1f2a3a",
   "logo": "star",
-  "car": 88,
+  "car": 93,
   "budget": 58000,
-  "expectation": 2,
+  "expectation": 1,
   "owner": "an automotive board"
  },
  {
@@ -54,9 +54,9 @@
   "color": "#006f62",
   "color2": "#c8d400",
   "logo": "wings",
-  "car": 78,
+  "car": 74,
   "budget": 50000,
-  "expectation": 5,
+  "expectation": 9,
   "owner": "an impatient billionaire owner"
  },
  {
@@ -66,7 +66,7 @@
   "color": "#1c8cff",
   "color2": "#ff6fb5",
   "logo": "chevron",
-  "car": 72,
+  "car": 74,
   "budget": 38000,
   "expectation": 8,
   "owner": "an automotive board"
@@ -78,9 +78,9 @@
   "color": "#0a4bd6",
   "color2": "#ffffff",
   "logo": "stripes",
-  "car": 77,
+  "car": 76,
   "budget": 40000,
-  "expectation": 6,
+  "expectation": 7,
   "owner": "a private equity fund"
  },
  {
@@ -90,9 +90,9 @@
   "color": "#6c8cff",
   "color2": "#ffffff",
   "logo": "charge",
-  "car": 74,
+  "car": 79,
   "budget": 36000,
-  "expectation": 7,
+  "expectation": 6,
   "owner": "a drinks conglomerate"
  },
  {
@@ -102,9 +102,9 @@
   "color": "#9aa0a6",
   "color2": "#e0352b",
   "logo": "diamond",
-  "car": 73,
+  "car": 75,
   "budget": 32000,
-  "expectation": 9,
+  "expectation": 8,
   "owner": "a machine-tool tycoon"
  },
  {
@@ -114,9 +114,9 @@
   "color": "#b9002c",
   "color2": "#c9ccd1",
   "logo": "rings",
-  "car": 71,
+  "car": 76,
   "budget": 42000,
-  "expectation": 9,
+  "expectation": 7,
   "owner": "an automotive board"
  },
  {
@@ -126,7 +126,7 @@
   "color": "#151515",
   "color2": "#c9a227",
   "logo": "crest",
-  "car": 66,
+  "car": 68,
   "budget": 45000,
   "expectation": 10,
   "owner": "a corporate parent"

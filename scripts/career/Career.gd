@@ -2379,15 +2379,48 @@ func next_day() -> bool:
 	return true
 
 
-## Sim forward: "week", "race" (to the next race day) or "month". Stops at a race day.
-func sim_ahead(span: String) -> int:
-	var days := 7 if span == "week" else (30 if span == "month" else 999)
+## True once today's job is done: practice run (or skipped), qualifying finished.
+## A race day is only done by racing, which moves the calendar on by itself.
+func day_done() -> bool:
+	match str(day_event()["type"]):
+		"practice", "test":
+			return practice_done()
+		"quali":
+			return int(state().get("quali_day", -1)) == today()
+		"race":
+			return false
+	return true
+
+
+func finish_qualifying_day() -> void:
+	state()["quali_day"] = today()
+	GameManager.save()
+
+
+func skip_practice() -> void:
+	state()["practice_day"] = today()
+	GameManager.save()
+
+
+## How many days a sim would move: "day", "week", "month" or "race". You can never sim
+## past a race weekend: every sim stops on its qualifying day.
+func sim_days(span: String) -> int:
+	var limit := 1 if span == "day" else (7 if span == "week" else (30 if span == "month" else 999))
+	var day := today()
 	var moved := 0
-	while moved < days:
-		if span == "race" and day_event()["type"] == "race":
+	while moved < limit:
+		var next_event := day_event(day + 1)
+		day += 1
+		moved += 1
+		if str(next_event["type"]) in ["quali", "race"]:
 			break
-		if not next_day():
-			break
+	return moved
+
+
+func sim_ahead(span: String) -> int:
+	var days := sim_days(span)
+	var moved := 0
+	while moved < days and next_day():
 		moved += 1
 	return moved
 

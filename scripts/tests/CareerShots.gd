@@ -33,8 +33,10 @@ func _run() -> void:
 	GameManager.profile["tutorial_seen"] = true
 	var menu := await _goto("res://scenes/MainMenu.tscn")
 	await _shot("a_menu")
-	(menu.get("_tutorial") as TutorialUI).open()
-	await _shot("a_tutorial")
+	CoachMarks.forced = true
+	menu.call("_start_tutorial")
+	await _shot("a_tutorial", 0.6)
+	CoachMarks.forced = false
 	var start := await _goto("res://scenes/career/CareerStart.tscn")
 	await _shot("b_teams")
 	start.set("_look", {"skin": 2, "hair": 5, "hair_color": 2, "accessory": 0, "outfit": 1, "face": 5})

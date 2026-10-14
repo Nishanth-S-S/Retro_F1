@@ -21,8 +21,10 @@ func _ready() -> void:
 	var c := Career.state()
 	# --- calendar, practice and form
 	_check(Career.today() == 0 and Career.date_text().contains("MAR"), "season starts %s" % Career.date_text())
-	var moved := Career.sim_ahead("race")
-	_check(Career.day_event()["type"] == "race" and not Career.next_day(), "sim to the next race stops on race day after %d days (%s)" % [moved, Career.date_text()])
+	var moved := Career.sim_ahead("month")
+	var at_weekend: bool = Career.day_event()["type"] == "quali"
+	Career.next_day()
+	_check(at_weekend and Career.day_event()["type"] == "race" and not Career.next_day(), "a month sim stops at the race weekend after %d days; race day cannot be skipped (%s)" % [moved, Career.date_text()])
 	Career.state()["date"] = Career.race_day(0) - 2
 	_check(Career.day_event()["type"] == "practice", "Friday before the race is practice")
 	var reserve_id: String = Career.reserves()[0]

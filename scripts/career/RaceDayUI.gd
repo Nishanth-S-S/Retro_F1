@@ -69,12 +69,12 @@ func _ready() -> void:
 		b.disabled = not ready
 		b.pressed.connect(func() -> void: Career.prepare_drive(id))
 		col.add_child(b)
-	var quick := UIKit.button("DONE\nNEXT DAY" if quali_day else "SIMULATE\nTHE RACE", 26)
+	var quick := UIKit.button("DONE\nWITH QUALIFYING" if quali_day else "SIMULATE\nTHE RACE", 26)
 	quick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	quick.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	quick.pressed.connect(func() -> void:
 		if quali_day:
-			Career.next_day()
+			Career.finish_qualifying_day()
 			SceneManager.goto("career")
 		else:
 			RaceReport.show(self, Career.quick_sim()))
@@ -109,6 +109,12 @@ func _ready() -> void:
 			SceneManager.goto("raceday"))
 	if not ready:
 		root.add_child(UIKit.label("THE CAR IS MISSING PARTS  -  FIX IT IN THE GARAGE", 16, UIKit.BAD))
+	var first_choice: Control = drive.get_child(0)
+	CoachMarks.run_once(self, "raceday", func() -> Array: return [
+		[first_choice, "QUALIFY on Saturday: one flying lap sets your grid slot. RACE on Sunday: drive it yourself..."],
+		[quick, "...or let it simulate. You can't skip a race weekend."],
+		[garage, "Last-minute changes? The GARAGE is here."],
+	])
 
 
 func _draw() -> void:

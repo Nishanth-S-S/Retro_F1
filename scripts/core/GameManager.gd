@@ -121,6 +121,7 @@ func default_profile() -> Dictionary:
 		"story_progress": 0,
 		"career": {},
 		"tutorial_seen": false,
+		"coach_seen": {},
 		"records": {},
 		"camera_default_applied": true,
 	}

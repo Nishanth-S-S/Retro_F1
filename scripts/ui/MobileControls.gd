@@ -35,6 +35,17 @@ func _pedal_center() -> Vector2:
 	return Vector2(size.x - maxf(110.0, size.x * 0.09), size.y - PEDAL_HALF_RANGE - 70.0)
 
 
+## Screen areas of the two controls (used by the tutorial spotlight).
+func steer_rect() -> Rect2:
+	var c := _steer_center()
+	return Rect2(c - Vector2(STEER_HALF_RANGE + 30.0, 40.0), Vector2(STEER_HALF_RANGE * 2.0 + 60.0, 80.0))
+
+
+func pedal_rect() -> Rect2:
+	var c := _pedal_center()
+	return Rect2(c - Vector2(45.0, PEDAL_HALF_RANGE + 30.0), Vector2(90.0, PEDAL_HALF_RANGE * 2.0 + 60.0))
+
+
 func _in_steer_zone(p: Vector2) -> bool:
 	return p.x < size.x * 0.42 and p.y > size.y * 0.3
 

@@ -350,6 +350,10 @@ static func practice_sheet(hub: Control, results: Array = []) -> void:
 		practice_sheet(hub, Career.run_practice(program, chosen)), chosen.is_empty())
 	_action(go, "DRIVE IT YOURSELF  (%s)" % (str(Career.driver(chosen[0])["name"]).get_slice(" ", 1).to_upper() if not chosen.is_empty() else "-"), false, func() -> void:
 		Career.prepare_practice(chosen[0]), chosen.is_empty())
+	_action(go, "SKIP THE SESSION", false, func() -> void:
+		Career.skip_practice()
+		hub._close_modal()
+		hub._show_tab(hub._tab))
 
 
 # ---------------------------------------------------------------- staff and people

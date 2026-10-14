@@ -38,6 +38,7 @@ var _tunnel: WindTunnelUI
 var _workshop: WorkshopUI
 ## Sidebar widgets shown only while no hardpoint is selected.
 var _summary_nodes: Array[Control] = []
+var _marks: Dictionary = {}
 var _car_button: Button
 
 
@@ -72,6 +73,16 @@ func _ready() -> void:
 	EventBus.money_changed.connect(func(_amount: int) -> void: _refresh_all())
 	_show_picker("")
 	_refresh_all()
+	CoachMarks.run_once(self, "garage", func() -> Array:
+		var steps: Array = [
+			[_workspace, "This is your car. Tap any part of it - wings, engine, tyres - to swap the part or tune it."],
+			[_marks["card"], "The CAR CARD rates everything: power, cornering, braking, drag... Every change moves the overall."],
+			[_marks["tunnel"], "The WIND TUNNEL shows your car in 3D and lights up its weakest areas."],
+		]
+		if _marks.has("workshop"):
+			steps.append([_marks["workshop"], "WORKSHOP: better materials, factory upgrades, R&D to unlock parts, and who drives which car."])
+		steps.append([_marks["test"], "TEST CAR takes it out on track so you can feel what you changed."])
+		return steps)
 
 
 func _place(node: Control, al: float, at: float, ar: float, ab: float, ol: float, ot: float, o_r: float, ob: float) -> void:
@@ -112,10 +123,12 @@ func _build_top_bar() -> void:
 		row.add_child(_car_button)
 		# Materials, factory, FIA check, who drives what, new cars.
 		var workshop := UIKit.button("WORKSHOP", 14, true)
+		_marks["workshop"] = workshop
 		workshop.custom_minimum_size = Vector2(130, 58)
 		workshop.pressed.connect(func() -> void: _workshop.open())
 		row.add_child(workshop)
 	var tunnel := UIKit.button("WIND\nTUNNEL", 13)
+	_marks["tunnel"] = tunnel
 	tunnel.custom_minimum_size = Vector2(110, 58)
 	tunnel.pressed.connect(func() -> void: _tunnel.open())
 	row.add_child(tunnel)
@@ -200,6 +213,7 @@ func _build_side_panel() -> void:
 	_picker.add_child(_remove_button)
 	# Actions.
 	var test := UIKit.button("TEST CAR", 26, true)
+	_marks["test"] = test
 	test.custom_minimum_size = Vector2(0, 64)
 	test.pressed.connect(func() -> void: _launch(GameManager.MODE_TEST))
 	box.add_child(test)
@@ -209,6 +223,7 @@ func _build_side_panel() -> void:
 	_summary_nodes.append(test)
 	_summary_nodes.append(modes)
 	var stats := UIKit.button("CAR CARD", 15)
+	_marks["card"] = stats
 	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stats.custom_minimum_size = Vector2(0, 44)
 	stats.pressed.connect(func() -> void:

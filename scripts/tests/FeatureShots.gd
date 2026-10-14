@@ -52,8 +52,24 @@ func _ui() -> void:
 	Career.upgrade_material("car2", "chassis")
 	Career.assign_car(Career.lineup()[1], "car2")
 	Career.state()["last_best"] = 3
+	CoachMarks.forced = true
 	var hub := await _goto("res://scenes/career/CareerHub.tscn")
+	await _shot("a_hq_tips", 0.8)
+	for node in hub.find_children("*", "CoachMarks", true, false):
+		node.queue_free()
+	CoachMarks.forced = false
+	Career.state()["date"] = 2
+	hub.call("_show_tab", 0)
 	await _shot("a_hq")
+	hub.call("_on_day_button")
+	await _shot("a_sim_picker")
+	var picker: SimPicker = hub.find_children("*", "SimPicker", true, false)[0]
+	picker.call("_step", 1)
+	picker.chosen.emit("week")
+	picker.queue_free()
+	await _shot("a_day_slide", 0.4)
+	await get_tree().create_timer(1.2).timeout
+	Career.state()["date"] = 0
 	hub.call("_show_tab", 1)
 	await _shot("b_drivers")
 	HubPanels.driver_card(hub, Career.lineup()[0])

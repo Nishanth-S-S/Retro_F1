@@ -2,8 +2,8 @@ extends Control
 ## Main menu: modes on the left, the game crest on the right, current save underneath.
 
 var _settings: SettingsPanel
+var _buttons: Dictionary = {}
 var _popup: InfoPopup
-var _tutorial: TutorialUI
 var _free: Control
 var _difficulty: DifficultyPanel
 var _time := 0.0
@@ -52,7 +52,10 @@ func _ready() -> void:
 	for info: Array in [
 		["> FREE DRIVE", func() -> void: _free.visible = true],
 		["# GARAGE", func() -> void: SceneManager.goto("garage")],
-		["? TUTORIAL", func() -> void: _tutorial.open()],
+		["? TUTORIAL", func() -> void:
+			# Replays every screen's guided tips, starting here.
+			CoachMarks.reset_all()
+			_start_tutorial()],
 		["= SETTINGS", func() -> void: _settings.visible = true],
 		["* DIFFICULTY: %s" % Difficulty.mode_name(), func() -> void: _difficulty.open()],
 	]:
@@ -63,6 +66,8 @@ func _ready() -> void:
 		grid.add_child(b)
 		if str(info[0]).begins_with("*"):
 			b.name = "DifficultyButton"
+		_buttons[str(info[0]).substr(2).get_slice(":", 0)] = b
+	_buttons["CAREER"] = career
 	# --- crest
 	var right := Frame.make("")
 	right.custom_minimum_size = Vector2(470, 0)
@@ -80,10 +85,18 @@ func _ready() -> void:
 	_difficulty.closed.connect(func() -> void:
 		(find_child("DifficultyButton", true, false) as Button).text = "* DIFFICULTY: %s" % Difficulty.mode_name()
 		(find_child("FreeDifficulty", true, false) as Button).text = "DIFFICULTY: %s  /  WEATHER: %s" % [Difficulty.mode_name(), DifficultyPanel.WEATHER_CHOICES[int(GameManager.setting("free_weather"))]])
-	_tutorial = TutorialUI.new()
-	add_child(_tutorial)
-	if not bool(GameManager.profile.get("tutorial_seen", false)):
-		_tutorial.open()
+	_start_tutorial()
+
+
+func _start_tutorial() -> void:
+	CoachMarks.run_once(self, "menu", func() -> Array: return [
+		[null, "Welcome to RETRO F1! Here's a quick tour. Tap anywhere to move on."],
+		[_buttons["CAREER"], "CAREER is the main game: run an F1 team for season after season. Every career is its own save."],
+		[_buttons["FREE DRIVE"], "FREE DRIVE: jump straight in. Test drive, time trial or a 5-lap race on any circuit."],
+		[_buttons["GARAGE"], "The GARAGE is where you build and tune your car. Every change shows up in its ratings."],
+		[_buttons["DIFFICULTY"], "Pick a DIFFICULTY from ROOKIE (lots of help) to LEGEND (none)."],
+		[_buttons["SETTINGS"], "Sound, steering feel and driving assists live in SETTINGS."],
+	])
 
 
 func _draw() -> void:

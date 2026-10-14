@@ -160,6 +160,16 @@ func _ready() -> void:
 		EventBus.driver_message.emit("%s  -  LOW GRIP" % WeatherFX.NAMES[weather], Color("7fd4ff"))
 	_camera.snap_to_target()
 	positions.update(cars, timers, track.length)
+	# First race on this save: point out the controls (the countdown waits).
+	CoachMarks.run_once(self, "race", func() -> Array: return [
+		[_controls.steer_rect(), "STEER here with your left thumb: slide left and right."],
+		[_controls.pedal_rect(), "The PEDAL: push up to accelerate, pull down to brake."],
+		[_hud._map, "The MAP shows every car. Watch the weather in its corner."],
+		[_hud._status, "FUEL, TYRES and DAMAGE. When they get low, steer into the pit lane after the start line - the stop runs itself."],
+		[_hud._drs, "DRS lights up on straights when you're within a second of the car ahead. Tap it to open the wing; braking closes it."],
+		[_hud.marks["cam"], "CAM switches between the driver's view and the overhead view."],
+		[_hud.marks["reset"], "Stuck? RESET puts you back on track for a 3-second penalty."],
+	], true)
 	_countdown = 3.6 if mode == GameManager.MODE_RACE else 1.2
 	_hud.set_countdown(0 if mode == GameManager.MODE_RACE else -1)
 	EventBus.race_state_changed.emit("countdown")
@@ -187,7 +197,11 @@ func _spawn_cars() -> void:
 	player_timer.lap_finished.connect(_on_player_lap)
 	player_timer.sector_finished.connect(_on_player_sector)
 	player_timer.lap_invalidated.connect(func() -> void: EventBus.driver_message.emit("LAP INVALID  ·  TRACK LIMITS", Color("ff5d5d")))
-	player.collided.connect(func(strength: float) -> void: _camera.add_shake(2.0 + strength * 7.0))
+	# Contact with a car or the wall shakes the camera and flashes the screen edges.
+	player.collided.connect(func(strength: float) -> void:
+		_camera.add_shake(6.0 + strength * 20.0)
+		_camera.kick(strength)
+		_hud.flash_hit(strength))
 	player.takes_damage = true
 	player.damage_scale = Difficulty.damage_scale()
 	player.wet = weather > 0
@@ -647,7 +661,7 @@ func open_drs() -> void:
 # ---------------------------------------------------------------- damage and story
 
 func _on_player_damaged(amount: float, total: float) -> void:
-	_camera.add_shake(3.0 + amount * 0.4)
+	_camera.add_shake(minf(28.0, 5.0 + amount * 1.2))
 	if amount >= 3.0 and total < 100.0:
 		EventBus.driver_message.emit("DAMAGE  %d%%" % int(total), Color("ff5d5d") if total > 60.0 else Color("ffb347"))
 
