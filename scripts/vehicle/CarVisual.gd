@@ -10,7 +10,9 @@ const S := VehiclePhysicsConfig.PPM
 const WHEELBASE := 3.0
 const FRONT_TRACK := 0.8
 const REAR_TRACK := 0.79
-const COMPOUND_COLORS := {"tires_hard": Color("f2f2f2"), "tires_medium": Color("f5c542"), "tires_soft": Color("e5484d")}
+const COMPOUND_COLORS := {"tires_vintage": Color("c9a27e"), "tires_endurance": Color("9aa3ad"), "tires_hard": Color("f2f2f2"), "tires_medium": Color("f5c542"),
+	"tires_soft": Color("e5484d"), "tires_super": Color("d14fb0"), "tires_ultra": Color("8a4fd6"), "tires_hyper": Color("f08a3c"), "tires_qualifier": Color("ff2f5d"),
+	"tires_inter": Color("2e9e5b"), "tires_wet": Color("2f6fde")}
 const BRAKE_COLORS := {"brakes_standard": Color("8b95a3"), "brakes_lightweight": Color("7fd4ff"), "brakes_racing": Color("ff9d3c")}
 const BLUEPRINT_LINE := Color("c9f2d9")
 const BLUEPRINT_FILL := Color(0.18, 0.56, 0.38, 0.35)
@@ -131,10 +133,27 @@ func _draw() -> void:
 	if chassis:
 		var wide := clampf((chassis.mass - 240.0) / 90.0, 0.0, 1.0)   # heavier tubs are visibly bulkier
 		var pod := 0.66 + 0.1 * wide
+		var floor_extra := 0.0
+		var tail := -0.3
+		# The body set changes the silhouette: cigar-thin 70s, wide 80s, long streamliners...
+		match setup.body:
+			"classic70":
+				pod = 0.42
+			"turbo80":
+				pod = 0.82
+			"ground22":
+				floor_extra = 0.12
+			"streamliner":
+				tail = -0.75
 		# Floor.
-		_symmetric([Vector2(3.25, 0.2), Vector2(2.5, 0.5), Vector2(2.0, pod + 0.06), Vector2(0.45, pod + 0.06), Vector2(-0.2, 0.42), Vector2(-0.32, 0.0)], dark)
+		_symmetric([Vector2(3.25, 0.2), Vector2(2.5, 0.5 + floor_extra), Vector2(2.0, pod + 0.06 + floor_extra), Vector2(0.45, pod + 0.06 + floor_extra), Vector2(-0.2, 0.42), Vector2(tail - 0.02, 0.0)], dark)
 		# Monocoque, sidepods and engine cover.
-		_symmetric([Vector2(4.05, 0.0), Vector2(4.0, 0.09), Vector2(3.0, 0.24 + 0.03 * wide), Vector2(2.35, 0.36 + 0.04 * wide), Vector2(2.05, pod), Vector2(0.95, pod - 0.05), Vector2(0.4, 0.4), Vector2(-0.25, 0.22), Vector2(-0.3, 0.0)], body_color)
+		_symmetric([Vector2(4.05, 0.0), Vector2(4.0, 0.09), Vector2(3.0, 0.24 + 0.03 * wide), Vector2(2.35, 0.36 + 0.04 * wide), Vector2(2.05, pod), Vector2(0.95, pod - 0.05), Vector2(0.4, 0.4), Vector2(-0.25, 0.22), Vector2(tail, 0.0)], body_color)
+		if setup.body == "winglet00":
+			for side: float in [-1.0, 1.0]:
+				_box(Vector2(1.15, side * (pod + 0.04)), Vector2(0.35, 0.08), accent_color)
+		elif setup.body == "wedge90":
+			_symmetric([Vector2(4.1, 0.0), Vector2(3.4, 0.12), Vector2(3.0, 0.0)], accent_color)
 	else:
 		_ghost_outline([Vector2(4.05, 0.0), Vector2(3.0, 0.26), Vector2(2.05, 0.7), Vector2(0.95, 0.66), Vector2(-0.3, 0.2)])
 	if chassis and not blueprint:
@@ -144,6 +163,9 @@ func _draw() -> void:
 			_shape([Vector2(1.9, side * 0.42), Vector2(1.9, side * 0.62), Vector2(1.0, side * 0.6), Vector2(1.25, side * 0.42)], accent_color, false)
 	_draw_gearbox()
 	_draw_engine()
+	if chassis and setup.body == "classic70":
+		# Tall periscope airbox above the driver's head.
+		draw_circle(Vector2(1.25, 0) * S, 0.22 * S, accent_color if not blueprint else BLUEPRINT_LINE)
 	if chassis:
 		# Cockpit opening and driver.
 		_symmetric([Vector2(2.2, 0.0), Vector2(2.1, 0.2), Vector2(1.55, 0.25), Vector2(1.4, 0.0)], Color("15171b"))

@@ -172,9 +172,18 @@ func _build_car() -> void:
 	_box(_car, Vector3(1.9, 0.3, 0.5), Vector3(2.55, 0.32, 0), body)                    # monocoque
 	_box(_car, Vector3(0.8, 0.16, 0.3), Vector3(3.75, 0.24, 0), body)                   # nose
 	_box(_car, Vector3(0.8, 0.02, 0.1), Vector3(3.75, 0.33, 0), accent)                 # nose stripe
+	var pod := {"classic70": 0.24, "turbo80": 0.6}.get(setup.body, 0.42) as float
 	for side: float in [-1.0, 1.0]:
-		_box(_car, Vector3(1.4, 0.36, 0.42), Vector3(1.45, 0.3, side * 0.5), body)      # sidepods
-		_box(_car, Vector3(0.5, 0.1, 0.42), Vector3(1.9, 0.5, side * 0.5), accent)
+		_box(_car, Vector3(1.4, 0.36, pod), Vector3(1.45, 0.3, side * (0.27 + pod * 0.55)), body)      # sidepods
+		_box(_car, Vector3(0.5, 0.1, pod), Vector3(1.9, 0.5, side * (0.27 + pod * 0.55)), accent)
+		if setup.body == "winglet00":
+			_box(_car, Vector3(0.3, 0.25, 0.05), Vector3(1.0, 0.6, side * (0.3 + pod)), accent)
+	if setup.body == "classic70":
+		_box(_car, Vector3(0.35, 0.55, 0.35), Vector3(1.3, 1.0, 0), accent)               # periscope airbox
+	elif setup.body == "streamliner":
+		_box(_car, Vector3(0.9, 0.3, 0.4), Vector3(-0.4, 0.4, 0), body)                   # long tail
+	elif setup.body == "ground22":
+		_box(_car, Vector3(2.4, 0.05, 1.6), Vector3(1.4, 0.08, 0), dark)                   # wide floor
 	var engine := setup.part("engine")
 	var bulk := clampf((engine.mass if engine else 90.0) / 120.0, 0.7, 1.3)
 	_box(_car, Vector3(1.5, 0.42 * bulk, 0.44), Vector3(0.65, 0.34 + 0.21 * bulk, 0), body)     # engine cover

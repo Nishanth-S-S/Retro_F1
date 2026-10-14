@@ -35,6 +35,13 @@ var _line_error_target := 0.0
 var _stuck_timer := 0.0
 var _throttle := 0.0
 var _brake_trim := 1.0
+## Pit stop: "" (racing), "in" (down the pit lane to the box), "stop" (crew working), "out".
+var pit_state := ""
+var _pit_time := 0.0
+## Set by RaceManager each frame: true while this car may open DRS.
+var drs_allowed := false
+
+const PIT_SPEED := 22.2               # 80 km/h pit lane limit
 
 
 func setup(vehicle: VehicleController, racing_line: RacingLine, profile: Dictionary, seed_value: int) -> void:
@@ -82,7 +89,10 @@ func _physics_process(delta: float) -> void:
 	# --- steering: pure pursuit of a look-ahead point on the (offset) racing line
 	var look_dist := LOOKAHEAD_BASE + v * LOOKAHEAD_TIME
 	var look_idx := idx + int(look_dist / track.spacing)
-	var target := line.point(look_idx, overtake.offset + _line_error)
+	var lateral_extra := overtake.offset + _line_error
+	if pit_state != "":
+		lateral_extra = _pit_offset(look_idx)
+	var target := line.point(look_idx, lateral_extra)
 	var to_target := (target - car.global_position).rotated(-car.rotation) / VehiclePhysicsConfig.PPM
 	var dist := maxf(to_target.length(), 1.0)
 	var wheel_angle := atan(2.0 * car.physics_config.wheelbase * to_target.y / (dist * dist))
@@ -106,6 +116,9 @@ func _physics_process(delta: float) -> void:
 	if car.surface_rear >= VehiclePhysicsConfig.Surface.GRASS:
 		target_v = minf(target_v, maxf(v, 14.0) + 2.0)
 	target_v = minf(target_v, overtake.speed_cap)
+	if pit_state != "":
+		target_v = _pit_speed(delta)
+	car.physics.aero.drs = drs_allowed and pit_state == "" and input.brake < 0.05
 	var error := target_v - v
 	var throttle_target := 0.0
 	var brake := 0.0
@@ -131,10 +144,14 @@ func _physics_process(delta: float) -> void:
 	if binary_pedals:
 		input.throttle = 1.0 if throttle_target > 0.3 else 0.0
 		input.brake = 1.0 if brake > 0.05 else 0.0
-	state = "OVERTAKE" if overtake.passing else ("FOLLOW" if overtake.speed_cap < INF else ("BRAKE" if brake > 0.05 else "RACING"))
+	if pit_state == "stop":
+		input.throttle = 0.0
+		input.brake = 1.0
+		_throttle = 0.0
+	state = "PIT" if pit_state != "" else "OVERTAKE" if overtake.passing else ("FOLLOW" if overtake.speed_cap < INF else ("BRAKE" if brake > 0.05 else "RACING"))
 
 	# --- recovery if stuck or facing a wall
-	if v < 1.5:
+	if v < 1.5 and pit_state == "":
 		_stuck_timer += delta
 		if _stuck_timer > STUCK_TIME:
 			_stuck_timer = 0.0
@@ -142,6 +159,50 @@ func _physics_process(delta: float) -> void:
 			needs_recovery.emit(car)
 	else:
 		_stuck_timer = 0.0
+
+
+## Called just after the car crosses the line on its pit lap.
+func start_pit(stop_seconds: float) -> void:
+	pit_state = "in"
+	_pit_time = stop_seconds
+
+
+func _lane_lateral() -> float:
+	return -(track.half_width + TrackData.PIT_WIDTH * 0.55)
+
+
+## Extra offset from the racing line that puts the look-ahead point in the pit lane, blended
+## in at the entry and out again at the exit.
+func _pit_offset(look_idx: int) -> float:
+	var i := posmod(look_idx, track.count)
+	var p := i * track.spacing
+	var lane := _lane_lateral() - line.offsets[i]
+	var blend := 1.0
+	if pit_state == "in":
+		blend = clampf((p - 5.0) / 45.0, 0.0, 1.0)
+	elif pit_state == "out":
+		blend = clampf((track.pit_end - 20.0 - p) / 60.0, 0.0, 1.0)
+	return lane * blend
+
+
+func _pit_speed(delta: float) -> float:
+	var p := car.progress
+	match pit_state:
+		"in":
+			var to_box := track.pit_box - p
+			if to_box < 1.5 and car.speed < 1.0:
+				pit_state = "stop"
+			return minf(PIT_SPEED, sqrt(maxf(0.0, 2.0 * 7.0 * (to_box - 0.5))))
+		"stop":
+			_pit_time -= delta
+			if _pit_time <= 0.0:
+				pit_state = "out"
+			return 0.0
+		"out":
+			if p > track.pit_end + 10.0 or p < track.pit_start:
+				pit_state = ""
+			return PIT_SPEED if p < track.pit_end - 20.0 else INF
+	return INF
 
 
 ## Each corner gets a fresh roll: usually tiny variation from consistency, occasionally

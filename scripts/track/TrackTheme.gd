@@ -40,6 +40,42 @@ const THEMES := {
 		"trees": ["pine", "pine", "pine", "round"], "tree_count": 1900, "tree_a": "17402a", "tree_b": "2a6a40",
 		"buildings": "cabin", "building_count": 60, "rocks": 80, "landmark": "snow", "water": "sea",
 	},
+	# --- real circuits
+	# Monza: the old royal park outside Milan - trees, lawns, villas.
+	"monza": {
+		"label": "ROYAL PARK, MILAN", "rain": 0.12,
+		"ground": "3f7a3a", "stripe": "47843f", "patch": "366f34", "gravel": "cdb98c",
+		"trees": ["round", "round", "round", "hedge"], "tree_count": 1300, "tree_a": "24582a", "tree_b": "357a38",
+		"buildings": "villa", "building_count": 40, "rocks": 0, "landmark": "ponds", "water": "",
+	},
+	# Silverstone: a wartime airfield in the English countryside.
+	"silverstone": {
+		"label": "ENGLISH AIRFIELD", "rain": 0.4,
+		"ground": "6f9a52", "stripe": "77a35a", "patch": "66904b", "gravel": "cfc39c",
+		"trees": ["round", "hedge", "shrub"], "tree_count": 520, "tree_a": "345f2e", "tree_b": "4d8240",
+		"buildings": "hangar", "building_count": 26, "rocks": 0, "landmark": "airfield", "water": "",
+	},
+	# Spa: through the Ardennes forest - dense pines and wooden chalets.
+	"spa": {
+		"label": "ARDENNES FOREST", "rain": 0.55,
+		"ground": "2f5a36", "stripe": "33603b", "patch": "2a5232", "gravel": "b9b3a2",
+		"trees": ["pine", "pine", "round"], "tree_count": 2200, "tree_a": "173d27", "tree_b": "2b6a3e",
+		"buildings": "cabin", "building_count": 50, "rocks": 50, "landmark": "", "water": "",
+	},
+	# Interlagos: inside the city of Sao Paulo - streets, towers, palms.
+	"interlagos": {
+		"label": "SAO PAULO", "rain": 0.35,
+		"ground": "9a9f98", "stripe": "a1a69f", "patch": "8d9590", "gravel": "d0bf95",
+		"trees": ["palm", "round"], "tree_count": 300, "tree_a": "2f7d46", "tree_b": "4fa85e",
+		"buildings": "city", "building_count": 150, "rocks": 0, "landmark": "", "water": "",
+	},
+	# Red Bull Ring: Styrian alpine meadows with rocks and farmhouses.
+	"spielberg": {
+		"label": "STYRIAN ALPS", "rain": 0.3,
+		"ground": "6a9a4a", "stripe": "72a352", "patch": "5e8c42", "gravel": "c9c0a0",
+		"trees": ["pine", "round", "shrub"], "tree_count": 900, "tree_a": "214a2c", "tree_b": "3f7a3a",
+		"buildings": "cabin", "building_count": 40, "rocks": 140, "landmark": "", "water": "",
+	},
 }
 
 

@@ -45,14 +45,20 @@ Holding the brake at a standstill selects reverse (automatic gearbox).
   - *Phone*: texts from drivers, your race engineer, technical director, scout and rival bosses after every race. Some carry offers (one-race sponsor sticker, a bid for one of your drivers, a job at another team) with ACCEPT / DECLINE. CONTACTS has a profile for everyone.
   - *Dilemmas*: `events.json`. Each event lists the conditions it needs (`"if": ["board<35"]`, `"win"`, `"cash<2500"` ...); after a race the highest-priority event whose conditions are all true fires, and none repeats within five races. The popup says why it came up and each option lists exactly what it changes.
   - *Disqualification*: a car that breaks the FIA rules is shown as DSQ with the reason. Season one has no wing-angle limit.
-  - *Race day*: DRIVE IT (you race the seven cars around you on the grid in the real driving game; your result is slotted into the full 22-car classification), PIT WALL (lap-by-lap strategy calls), or QUICK SIM.
+  - *Race day*: the track, the weather, two big DRIVE buttons (you race the seven cars around you on the grid; your result is slotted into the full 22-car classification), SIMULATE, and the only GARAGE button in the career.
+  - *Cards*: every person (drivers, reserves, prospects, rival drivers, engineers, staff, you) is the same card; tap it for the full-screen card. Signing a driver puts them straight on your bench (up to three); race them from their card.
+  - *Driver development*: drivers improve a little after every race towards their potential - fastest when young, with points finishes, in a race seat and next to a star team-mate; veterans decline. Per-driver training (REST / NORMAL / INTENSE / EXTREME) trades speed of development for fitness and morale (below 40 fitness they can break down), and a simulator programme speeds learning for cash.
+  - *You*: the manager card shows your contract (salary, years, expiry), rating, history, job security and the teams that would hire you (they pay your release fee). When a contract runs out the owners renew it or let you go.
+  - *Seasons*: after the last round a season review shows the result and starts the next season.
   - Money is in thousands: `25000` is shown as `$25.0M`.
 - **Difficulty**: ROOKIE, INTERMEDIATE, PRO, CHAMPION, LEGEND. Each sets CPU pace and aggression, steering and braking help, extra grip, damage, ABS, traction control, stability and the racing line (`Difficulty.gd`). Main menu, pause menu and race day.
 - **Weather**: dry, light rain or heavy rain on track: less grip, spray, rain and lightning. Career races use the forecast; Free Drive follows the track's climate or your choice in the difficulty panel.
 - **Scenery**: each circuit has its own surroundings from `TrackTheme.gd` / `TrackScenery.gd`: Falcon Ridge desert canyon, Port Azure harbour city, Tempo Park royal park, Silver Lake lakeside airfield, Nordhaven nordic forest.
 - **Wind tunnel** (garage): the only 3D view in the game. A blocky model built from the setup turns under streamlines, with drag, downforce and top speed underneath. In career each run uses the FIA allowance and adds car knowledge (car rating).
-- **Tracks**: five circuits in `data/tracks/` (Falcon Ridge, Tempo Park, Port Azure, Silver Lake, Nordhaven). Free Drive has a track picker; each career round names its track in `calendar.json`. Records and ghosts are kept per track.
-- **Pit stops while driving**: the left side of the start straight is a pit lane with one red service box. Stop in it to repair damage, refuel and take new tires. The stop lasts longer with more damage and less fuel, and shorter with a better pit crew (Factory). Fuel only burns in races; thirsty engines cannot finish five laps without a stop.
+- **Tracks**: ten circuits in `data/tracks/`. Monza, Silverstone, Spa-Francorchamps, Interlagos and the Red Bull Ring use the real layouts (centrelines from the MIT-licensed [f1-circuits](https://github.com/bacinger/f1-circuits) dataset by Tomislav Bacinger); Falcon Ridge, Tempo Park, Port Azure, Silver Lake and Nordhaven are fictional. Floodlights ring every circuit, a start gantry counts down the lights, night rounds are floodlit, and the crowd gets louder as you pass the grandstands.
+- **Camera**: CAM switches between the classic overhead view and the driver's view (close, turned with the car, looking up the road, with speed streaks and an F1 steering wheel showing revs, gear and speed).
+- **Car options**: eleven tyre compounds from vintage and endurance to hyper soft and qualifier, plus intermediates and full wets that are faster in the rain; ride height, tyre pressure and anti-roll balance; seven body sets (70s classic to ground effect) that trade downforce for drag. More parts are open from the start; R&D unlocks the rest. Free Drive has a track picker; each career round names its track in `calendar.json`. Records and ghosts are kept per track.
+- **Pit stops while driving**: steer into the pit lane after the start line and the stop plays as a cutscene: the car drives the lane at the 80 km/h limit, the crew runs out (wheel guns, jacks, a new nose if it was damaged, lollipop), you pick the next tyre, and the car is released at the exit. Stop time depends on the pit crew level (Workshop) and how much work there is; crews occasionally fumble. Rival cars stop in the same lane.
 - **Race HUD**: position and lap, live leaderboard, lap time and delta, FUEL / TIRES / DAMAGE bars, track map with every car and the weather, gear and speed.
 - **Saves**: the saves are careers. CAREER on the main menu lists six: continue one or start a new one in an empty slot. Each has its own garage and records.
 - **Tutorial**: six pages, opens on first launch of a save and from the main menu.
@@ -60,6 +66,25 @@ Holding the brake at a standstill selects reverse (automatic gearbox).
 - **Free Drive**: Test Drive, Time Trial (PB ghost, live delta, target times), 5 Lap Race (7 AI, you start P4).
 - **Damage**: impacts fill the damage bar on the HUD. At 100 % the car explodes, the session ends and a rebuild fee is charged (`explosion_penalty` in `economy.json`, smaller in Test Drive).
 - **Stability Assist** (Settings, on by default) damps slides and trims power while the rear is stepping out.
+
+## F1 rules in the game
+
+Researched from the real sporting regulations and simplified where a mobile game needs it:
+
+| Real F1 | In Retro F1 |
+|---|---|
+| Grand Prix and Sprint weekends | The calendar mixes Grands Prix (5 laps driven / 20 simulated) and Sprints (3 / 8) |
+| Points 25-18-15-12-10-8-6-4-2-1, sprint 8-1 | Same, and the season finale pays double (as F1 did once, in 2014) |
+| Qualifying sets the grid | QUALIFY on race day: one flying lap, judged against your car's ideal lap, moves your grid slot; three tries for a valid lap |
+| Two different dry compounds in a dry race | A dry Grand Prix needs one stop onto a different dry compound, or +25 s |
+| Pit lane speed limit 80 km/h | The pit-lane autopilot drives at 80 km/h |
+| Track limits: warnings, then 5 s penalties | Three warnings, then +5 s for each time off the track |
+| DRS within one second on a straight | DRS button lights up on long straights within a second of the car ahead from lap 2; it closes when you brake |
+| Intermediate and full wet tyres | Inters and wets are faster in the rain, slower in the dry |
+| Street and night races | Street circuits and floodlit night rounds on the calendar |
+| No refuelling since 2010 | Kept: cars still refuel at stops, so thirsty engines remain a strategy choice |
+
+Skill matters at every step: the qualifying lap, using DRS at the right moment, staying inside track limits, managing tyres and damage (kerbs and run-offs wear the car faster), and choosing when to pit and on which tyre.
 
 ## How it is built
 

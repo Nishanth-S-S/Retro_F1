@@ -30,6 +30,12 @@ var _pause_overlay: Control
 var _shift_box: VBoxContainer
 var _slow_timer := 0.0
 var _map: Art
+var _cockpit: Art
+var _speed_lines: Art
+var _driver_view := false
+var _tyres: HFlowContainer
+var _tyre_note: Label
+var _drs: Button
 var _map_points := PackedVector2Array()
 
 
@@ -122,6 +128,12 @@ func _build_top_right() -> void:
 		garage.custom_minimum_size = Vector2(104, 46)
 		garage.pressed.connect(func() -> void: manager.leave_to("garage"))
 		box.add_child(garage)
+	var cam := UIKit.button("CAM", 14)
+	cam.custom_minimum_size = Vector2(70, 46)
+	cam.pressed.connect(func() -> void:
+		GameManager.set_setting("camera_mode", 1 - int(GameManager.setting("camera_mode")))
+		GameManager.save())
+	box.add_child(cam)
 	var reset := UIKit.button("RESET", 14)
 	reset.custom_minimum_size = Vector2(80, 46)
 	reset.pressed.connect(func() -> void: manager.reset_player())
@@ -146,6 +158,46 @@ func _build_bottom() -> void:
 	_gauge.size = Vector2(230, 70)
 	_gauge.position = Vector2(-115, -80)
 	_root.add_child(_gauge)
+	# Driver's view: speed streaks at the edges and an F1 steering wheel at the bottom.
+	_speed_lines = Art.make(Vector2.ZERO, _paint_speed_lines)
+	_speed_lines.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_speed_lines.visible = false
+	_root.add_child(_speed_lines)
+	_root.move_child(_speed_lines, 0)
+	_cockpit = Art.make(Vector2(340, 170), _paint_wheel)
+	_cockpit.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_cockpit.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_cockpit.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_cockpit.size = Vector2(340, 170)
+	_cockpit.position = Vector2(-170, -150)
+	_cockpit.visible = false
+	_root.add_child(_cockpit)
+	# Tyre choice during a pit stop.
+	var tyre_box := VBoxContainer.new()
+	tyre_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	tyre_box.offset_left = 220
+	tyre_box.offset_right = -220
+	tyre_box.offset_top = -330
+	tyre_box.offset_bottom = -170
+	tyre_box.add_theme_constant_override("separation", 6)
+	_root.add_child(tyre_box)
+	_tyre_note = _shadowed("", 18, AMBER)
+	_tyre_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tyre_box.add_child(_tyre_note)
+	_tyres = HFlowContainer.new()
+	_tyres.alignment = FlowContainer.ALIGNMENT_CENTER
+	_tyres.add_theme_constant_override("h_separation", 6)
+	_tyres.add_theme_constant_override("v_separation", 6)
+	tyre_box.add_child(_tyres)
+	# DRS: lights up on a straight within a second of the car ahead; tap to open the flap.
+	_drs = UIKit.button("DRS", 22)
+	_drs.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_drs.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_drs.size = Vector2(176, 66)
+	_drs.position = Vector2(-190, 292)
+	_drs.pressed.connect(func() -> void: manager.open_drs())
+	_drs.visible = false
+	_root.add_child(_drs)
 	# Manual shift buttons, reachable by the right thumb beside the pedal.
 	_shift_box = VBoxContainer.new()
 	_shift_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -298,15 +350,21 @@ func _process(delta: float) -> void:
 		_delta_label.text = ""
 	_pit_label.visible = manager.pit_timer > 0.0
 	if _pit_label.visible:
-		_pit_label.text = "PIT  %.1f" % manager.pit_timer
+		_pit_label.text = "PIT STOP  %.1f" % manager.pit_timer
 	_gauge.queue_redraw()
+	if _driver_view:
+		_cockpit.queue_redraw()
+		_speed_lines.queue_redraw()
+	_drs.visible = manager.mode == GameManager.MODE_RACE and manager.pit_phase == ""
+	_drs.disabled = not manager.drs_available
+	_drs.text = "DRS OPEN" if manager.drs_open else "DRS"
 	_slow_timer -= delta
 	if _slow_timer > 0.0:
 		return
 	_slow_timer = 0.15
 	_position_label.text = "P%d" % manager.positions.position_of(manager.player)
 	var lap_number := timer.laps_completed + 1
-	_lap_label.text = "LAP %d/%d" % [mini(lap_number, GameManager.RACE_LAPS), GameManager.RACE_LAPS] if manager.mode == GameManager.MODE_RACE else "LAP %d" % lap_number
+	_lap_label.text = "LAP %d/%d" % [mini(lap_number, GameManager.race_laps), GameManager.race_laps] if manager.mode == GameManager.MODE_RACE else "LAP %d" % lap_number
 	_board.queue_redraw()
 	_status.queue_redraw()
 	if _map:
@@ -422,6 +480,94 @@ func _paint_map(a: Control) -> void:
 	a.draw_rect(Rect2(me - Vector2(5, 5), Vector2(10, 10)), Color.BLACK)
 	a.draw_rect(Rect2(me - Vector2(4, 4), Vector2(8, 8)), RED)
 	a.draw_rect(Rect2(me - Vector2(2, 2), Vector2(4, 4)), WHITE)
+
+
+## Pit stop tyre picker: one button per compound the team owns. Empty list hides it.
+func show_tyre_choice(options: Array, chosen: String, required: bool) -> void:
+	for child in _tyres.get_children():
+		child.queue_free()
+	_tyre_note.text = ""
+	if options.is_empty():
+		return
+	_tyre_note.text = "PICK TYRES%s" % ("  -  A DIFFERENT DRY COMPOUND IS REQUIRED" if required else "")
+	for id: String in options:
+		var part := PartDB.get_part(id)
+		var b := UIKit.button(part.display_name.to_upper(), 13, id == chosen)
+		b.custom_minimum_size = Vector2(130, 52)
+		b.add_theme_color_override("font_outline_color", Color.BLACK)
+		var tire_id := id
+		b.pressed.connect(func() -> void: manager.choose_tyre(tire_id))
+		var band := ColorRect.new()
+		band.color = CarVisual.COMPOUND_COLORS.get(id, Color.WHITE)
+		band.custom_minimum_size = Vector2(0, 6)
+		band.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+		band.offset_top = -10
+		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(band)
+		_tyres.add_child(b)
+
+
+func set_driver_view(on: bool) -> void:
+	_driver_view = on
+	_cockpit.visible = on
+	_speed_lines.visible = on
+	_gauge.visible = not on
+
+
+func _paint_speed_lines(a: Control) -> void:
+	var car := manager.player if manager else null
+	if car == null:
+		return
+	var t := clampf((car.speed - 30.0) / 50.0, 0.0, 1.0)
+	# Vignette that tightens with speed.
+	for i in 6:
+		var inset := i * 14.0
+		a.draw_rect(Rect2(inset, inset, a.size.x - inset * 2.0, a.size.y - inset * 2.0), Color(0, 0, 0, 0.05 + 0.05 * t), false, 14.0)
+	if t <= 0.0:
+		return
+	var centre := a.size * Vector2(0.5, 0.42)
+	var phase := fmod(manager.race_time * 3.0, 1.0)
+	for k in 26:
+		var ang := TAU * k / 26.0 + sin(k * 7.3) * 0.1
+		var dir := Vector2.RIGHT.rotated(ang)
+		var start := 0.62 + fmod(phase + k * 0.37, 1.0) * 0.3
+		var p0 := centre + dir * a.size.length() * 0.5 * start
+		var p1 := centre + dir * a.size.length() * 0.5 * minf(start + 0.12 * t, 1.0)
+		a.draw_line(p0, p1, Color(1, 1, 1, 0.22 * t), 3.0)
+
+
+## Dashboard in the driver's view: rev lights across the top, gear and speed in the
+## middle, DRS and pit status lights. It stays still - only the numbers move.
+func _paint_wheel(a: Control) -> void:
+	var car := manager.player if manager else null
+	if car == null or car.physics.stats == null:
+		return
+	var f := UIKit.font()
+	var p := car.physics
+	a.draw_set_transform(Vector2(a.size.x * 0.5, 104), 0.0, Vector2.ONE)
+	var ink := Color("0e1013")
+	a.draw_rect(Rect2(-132, -54, 264, 104), ink)
+	a.draw_rect(Rect2(-126, -48, 252, 92), Color("23262e"))
+	var frac := clampf(p.display_rpm / p.engine.redline_rpm, 0.0, 1.0)
+	for i in 15:
+		var lit := float(i) / 15.0 < frac
+		var c := Color("2f6fde") if i >= 12 else (Color("ff3b30") if i >= 8 else Color("37d45a"))
+		a.draw_rect(Rect2(-112 + i * 15.0, -44, 11, 9), c if lit else Color(c, 0.18))
+	a.draw_rect(Rect2(-62, -30, 124, 62), Color("0a0c0f"))
+	a.draw_rect(Rect2(-62, -30, 124, 62), Color("3a3f48"), false, 2.0)
+	var gear := p.transmission.gear
+	a.draw_string(f, Vector2(-62, 18), "R" if gear < 0 else ("N" if gear == 0 else str(gear)), HORIZONTAL_ALIGNMENT_CENTER, 62, 42, Color("ffb347") if p.transmission.is_shifting() else Color.WHITE)
+	a.draw_string(f, Vector2(0, 8), "%d" % int(car.speed_kmh()), HORIZONTAL_ALIGNMENT_CENTER, 62, 24, Color.WHITE)
+	a.draw_string(f, Vector2(0, 24), "KM/H", HORIZONTAL_ALIGNMENT_CENTER, 62, 10, DIM)
+	var lights := [[-100, 4, "DRS", Color("37d45a") if manager.drs_open else (Color("f5c542") if manager.drs_available else Color("3a3f48"))],
+		[-100, 30, "PIT", Color("f5c542") if manager.pit_phase != "" else Color("3a3f48")],
+		[100, 4, "DMG", GREEN.lerp(RED, clampf(car.damage / 80.0, 0.0, 1.0))],
+		[100, 30, "TYR", GREEN.lerp(RED, clampf(1.0 - minf(p.front_tire.wear, p.rear_tire.wear), 0.0, 1.0) * 1.6)]]
+	for info: Array in lights:
+		a.draw_circle(Vector2(info[0], info[1]), 10.0, info[3])
+		a.draw_circle(Vector2(info[0], info[1]), 4.0, ink)
+		a.draw_string(f, Vector2(float(info[0]) - 30.0 + (0.0 if info[0] < 0 else 44.0), float(info[1]) + 4.0), str(info[2]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, DIM)
+	a.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _paint_gauge(a: Control) -> void:

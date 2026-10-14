@@ -27,6 +27,8 @@ var abs_level := 1
 var stability_assist := 0.0
 ## Multiplies all tire grip: wet weather lowers it, the difficulty grip aid raises it.
 var grip_scale := 1.0
+## 0..1: how much a damaged car has lost (power and grip).
+var damage_loss := 0.0
 var _rear_slide := 0.0
 
 # --- outputs of the latest step (read by controller, HUD, telemetry, debug overlay)
@@ -70,6 +72,11 @@ func configure(setup: CarSetup, physics_config: VehiclePhysicsConfig) -> void:
 	if setup.part("tires"):
 		front_tire.configure(setup.part("tires"))
 		rear_tire.configure(setup.part("tires"))
+		for tire: TireModel in [front_tire, rear_tire]:
+			# Higher pressure: less grip, warms up faster, wears less.
+			tire.base_grip *= CarStats.pressure_grip(setup.tyre_pressure)
+			tire.heat_rate *= 1.0 + (setup.tyre_pressure - 5) * 0.05
+			tire.wear_rate *= 1.0 - (setup.tyre_pressure - 5) * 0.04
 	aero.configure(stats, config)
 	reset()
 
@@ -122,6 +129,7 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 		drive_force = 0.0
 	# Stability assist trims power while the rear is stepping out (uses last step's slide).
 	drive_force *= 1.0 - config.stability_torque_cut * stability_assist * _rear_slide
+	drive_force *= 1.0 - 0.22 * damage_loss
 
 	# ---- axle loads: static + longitudinal transfer + downforce
 	aero.update(vx)
@@ -218,7 +226,7 @@ func _surface_grip(surface: int, curb_compliance: float) -> float:
 	if surface >= VehiclePhysicsConfig.Surface.GRASS:
 		# Grass and gravel are already slippery; rain must not make a spin unrecoverable.
 		return config.surface_grip[surface] * maxf(grip_scale, 0.9)
-	return config.surface_grip[surface] * grip_scale
+	return config.surface_grip[surface] * grip_scale * (1.0 - 0.14 * damage_loss)
 
 
 ## Shares one grip budget between longitudinal and lateral demand.

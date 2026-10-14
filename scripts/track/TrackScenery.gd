@@ -288,6 +288,63 @@ func _runways() -> void:
 
 # ---------------------------------------------------------------- objects (around the track)
 
+## Close-up texture: grass tufts and gravel by the track, aggregate in the asphalt,
+## rubber laid down in the braking zones, catch fencing and tyre walls at the barriers.
+func details() -> void:
+	var hw := data.half_width
+	var tuft_a := _col("patch").darkened(0.12)
+	var tuft_b := _col("stripe").lightened(0.1)
+	for i in 7000:
+		var j := rng.randi() % data.count
+		var side := 1.0 if rng.randf() < 0.5 else -1.0
+		var d := hw + 2.0 + rng.randf() * 60.0
+		var p := data.points[j] + data.normals[j] * side * d * PPM
+		if track_distance(p) < hw + 2.0 or in_water(p):
+			continue
+		_box(p, Vector2(0.25, 0.25) * rng.randf_range(0.8, 1.8), tuft_a if rng.randf() < 0.6 else tuft_b)
+	# Asphalt aggregate.
+	for i in 9000:
+		var j := rng.randi() % data.count
+		var lat := rng.randf_range(-hw + 0.4, hw - 0.4)
+		var p := data.points[j] + data.normals[j] * lat * PPM + data.tangents[j] * rng.randf_range(0.0, data.spacing) * PPM
+		_box(p, Vector2(0.16, 0.16), Color(1, 1, 1, 0.07) if rng.randf() < 0.5 else Color(0, 0, 0, 0.12))
+	# Rubber: two dark tyre tracks through every braking zone into the apex.
+	for corner: Dictionary in data.corners:
+		var from := data.index_at(float(corner["start"]) - 60.0)
+		var to := data.index_at(float(corner["apex"]))
+		var steps := posmod(to - from, data.count)
+		for k in steps:
+			var j := data.wrap_index(from + k)
+			var t := float(k) / maxf(steps, 1)
+			var lat := -float(corner["direction"]) * lerpf(hw * 0.55, -hw * 0.5, t * t)
+			for wheel: float in [-0.8, 0.8]:
+				var p := data.points[j] + data.normals[j] * (lat + wheel) * PPM
+				_rot_box(p, Vector2(data.spacing * 0.55, 0.22), data.tangents[j].angle(), Color(0, 0, 0, 0.16 * (1.0 - t * 0.5)))
+	# Catch fence just behind the barriers, with posts.
+	for j in data.count:
+		var n := data.wrap_index(j + 1)
+		for side: float in [-1.0, 1.0]:
+			var off := (data.barrier_right[j] if side > 0.0 else data.barrier_left[j]) + 2.0
+			var off_n := (data.barrier_right[n] if side > 0.0 else data.barrier_left[n]) + 2.0
+			var a := data.points[j] + data.normals[j] * side * off * PPM
+			var b := data.points[n] + data.normals[n] * side * off_n * PPM
+			var w := data.normals[j] * 0.08 * PPM
+			_quad(a - w, b - w, b + w, a + w, Color(0.75, 0.78, 0.82, 0.55))
+			if j % 3 == 0:
+				_box(a, Vector2(0.2, 0.2), Color("4a4f57"))
+	# Tyre walls where the gravel traps end at the barrier.
+	for j in range(0, data.count, 1):
+		for side: float in [-1.0, 1.0]:
+			var gravel := data.gravel_right[j] if side > 0.0 else data.gravel_left[j]
+			if gravel != 1 or j % 2 == 1:
+				continue
+			var off := (data.barrier_right[j] if side > 0.0 else data.barrier_left[j]) - 0.9
+			for row in 2:
+				var p := data.points[j] + data.normals[j] * side * (off - row * 0.8) * PPM
+				_disc(p, 0.42, Color("16181c"), 6)
+				_disc(p, 0.18, Color("f4f6f2") if (j / 2 + row) % 2 == 0 else Color("c8201e"), 5)
+
+
 func objects() -> void:
 	_trackside()
 	_landmark()

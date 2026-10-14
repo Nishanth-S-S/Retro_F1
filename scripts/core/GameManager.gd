@@ -7,8 +7,11 @@ const MODE_TIME_TRIAL := "time_trial"
 const MODE_RACE := "race"
 const MODE_LABELS := {"test": "TEST DRIVE", "time_trial": "TIME TRIAL", "race": "5 LAP RACE"}
 const RACE_LAPS := 5
-const TRACKS: PackedStringArray = ["falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven"]
-const TRACK_NAMES := {"falcon_ridge": "FALCON RIDGE", "tempo_park": "TEMPO PARK", "port_azure": "PORT AZURE", "silver_lake": "SILVER LAKE", "nordhaven": "NORDHAVEN"}
+const SPRINT_LAPS := 3
+## The first five are real Grand Prix circuits (layouts from the f1-circuits dataset), the rest are fictional.
+const TRACKS: PackedStringArray = ["monza", "silverstone", "spa", "interlagos", "spielberg", "falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven"]
+const TRACK_NAMES := {"monza": "MONZA", "silverstone": "SILVERSTONE", "spa": "SPA", "interlagos": "INTERLAGOS", "spielberg": "RED BULL RING",
+	"falcon_ridge": "FALCON RIDGE", "tempo_park": "TEMPO PARK", "port_azure": "PORT AZURE", "silver_lake": "SILVER LAKE", "nordhaven": "NORDHAVEN"}
 
 const DEFAULT_SETTINGS := {
 	"master_volume": 0.8, "music_volume": 0.5, "effects_volume": 0.8,
@@ -20,6 +23,8 @@ const DEFAULT_SETTINGS := {
 	"diff_brake_assist": 0.0, "diff_grip": 0.0, "diff_damage": 0.5,
 	# Free-drive weather: 0 = by track, 1 = dry, 2 = light rain, 3 = heavy rain.
 	"free_weather": 0,
+	# 0 = classic overhead camera, 1 = driver's view (low, close, looking up the road).
+	"camera_mode": 1,
 }
 
 var economy: Dictionary = {}
@@ -36,6 +41,11 @@ var active_mission := -1
 var career_race: Dictionary = {}
 ## Weather of the on-track session being started: 0 dry, 1 light rain, 2 heavy rain.
 var session_weather := 0
+## Night race: the circuit is floodlit.
+var session_night := false
+## Laps in the on-track race (a sprint is shorter) and whether a pit stop is compulsory.
+var race_laps := RACE_LAPS
+var mandatory_stop := true
 
 
 func _ready() -> void:
@@ -267,6 +277,9 @@ func is_challenge_done(id: String) -> bool:
 func start_free_session(mode: String) -> void:
 	active_mission = -1
 	career_race = {}
+	session_night = false
+	race_laps = RACE_LAPS
+	mandatory_stop = true
 	var choice := int(setting("free_weather"))
 	if choice == 0:
 		# Left to the track's climate.

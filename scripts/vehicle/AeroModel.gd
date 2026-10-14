@@ -11,6 +11,8 @@ var air_density := 1.225
 var front_downforce := 0.0
 var rear_downforce := 0.0
 var drag := 0.0
+## DRS: the rear wing flap is open - much less drag, a little less rear downforce.
+var drs := false
 
 
 func configure(stats: CarStats, config: VehiclePhysicsConfig) -> void:
@@ -24,4 +26,6 @@ func update(speed: float) -> void:
 	var q := 0.5 * air_density * speed * speed
 	front_downforce = q * front_area
 	rear_downforce = q * rear_area
-	drag = q * drag_area
+	drag = q * drag_area * (0.75 if drs else 1.0)
+	if drs:
+		rear_downforce *= 0.85

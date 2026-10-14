@@ -1,42 +1,390 @@
 class_name HubPanels
 extends RefCounted
-## Sheets and cards opened from Team HQ: hiring staff, sponsors, the list of rival drivers
-## who can be bought out of their contracts, and the full driver card.
+## Cards and full-screen views opened from Team HQ: the card data for every kind of person,
+## the full driver / staff / manager cards, hiring staff, sponsors and the season review.
 ## Every function takes the hub and builds with the hub's helpers.
 
+const TAB_DRIVERS := 1
 const TAB_SCOUTING := 2
 ## Stat rows on a driver card: label, key, scouting phase that reveals it.
 const CARD_STATS: Array = [
 	["PACE", "pace", 1], ["STARTS", "starts", 1], ["RACECRAFT", "racecraft", 2], ["CONSISTENCY", "consistency", 2],
 	["OVERTAKING", "overtaking", 2], ["DEFENDING", "defending", 2], ["TYRE CARE", "tyres", 2], ["WET WEATHER", "wet", 2], ["EGO", "ego", 3],
 ]
+const STAFF_NOTES := {
+	"OWNER'S OFFICE": "Signs the cheques and judges you on results.",
+	"RACE ENGINEER": "Talks to your drivers on the radio and reports after every race.",
+	"TECHNICAL DIRECTOR": "Runs the factory and keeps an eye on the cost cap.",
+	"CHIEF SCOUT": "Watches the junior series and sends you free reports.",
+}
 
 
-static func _engineer_face(e: Dictionary, size: float) -> Art:
-	var team := Career.team(str(e["team"]))
-	var color := Color(str(team["color"])) if not team.is_empty() else Color("6a7078")
-	return Art.make(Vector2(size, size), func(a: Control) -> void:
-		PixelArt.draw_portrait(a, Rect2(Vector2.ZERO, a.size), e["look"], color, Color("d8e6dc")))
+static func _team_color(team_id: String) -> Color:
+	var t := Career.team(team_id)
+	return Color(str(t["color"])) if not t.is_empty() else Color("6a7078")
 
 
-static func _button(text: String, width: float, accent: bool, action: Callable, size: int = 12) -> Button:
-	var b := UIKit.button(text, size, accent)
-	b.custom_minimum_size = Vector2(width, 44)
-	b.pressed.connect(action)
+## Makes a whole panel tappable, with a small press-in animation.
+static func clickable(node: Control, action: Callable) -> Control:
+	node.mouse_filter = Control.MOUSE_FILTER_STOP
+	node.gui_input.connect(func(event: InputEvent) -> void:
+		if not (event is InputEventMouseButton) or event.button_index != MOUSE_BUTTON_LEFT:
+			return
+		node.pivot_offset = node.size * 0.5
+		if event.pressed:
+			node.create_tween().tween_property(node, "scale", Vector2(0.96, 0.96), 0.06)
+		else:
+			var t := node.create_tween()
+			t.tween_property(node, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			if Rect2(Vector2.ZERO, node.size).has_point(event.position):
+				AudioManager.play("click", -12.0)
+				t.tween_callback(action))
+	return node
+
+
+## The same press-in animation for a Button.
+static func press_anim(b: BaseButton) -> BaseButton:
+	b.button_down.connect(func() -> void:
+		b.pivot_offset = b.size * 0.5
+		b.create_tween().tween_property(b, "scale", Vector2(0.95, 0.95), 0.06))
+	b.button_up.connect(func() -> void:
+		b.create_tween().tween_property(b, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 	return b
 
 
-# ---------------------------------------------------------------- hire staff (sheet)
+static func grid(parent: Control) -> HFlowContainer:
+	var flow := HFlowContainer.new()
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow.add_theme_constant_override("h_separation", 12)
+	flow.add_theme_constant_override("v_separation", 12)
+	parent.add_child(flow)
+	return flow
 
-## Everyone you could hire: free agents first, then rival staff who cost a buyout.
-static func staff_sheet(hub: Control, note: String = "") -> void:
-	var list: VBoxContainer = hub.open_sheet("HIRE STAFF  %d / %d" % [Career.engineers().size(), Career.max_engineers()], note)
+
+# ---------------------------------------------------------------- full-screen frame
+
+## Full-screen card view. Returns [top row, body]; the close button sits at the bottom.
+static func open_full(hub: Control, title: String, color: Color) -> Array:
+	hub._close_modal()
+	var modal := Control.new()
+	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hub.add_child(modal)
+	hub._modal = modal
+	var bg := ColorRect.new()
+	bg.color = UIKit.BG
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal.add_child(bg)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	modal.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 10)
+	margin.add_child(root)
+	root.add_child(UIKit.title_bar(title, 54.0))
+	var band := ColorRect.new()
+	band.color = color
+	band.custom_minimum_size = Vector2(0, 6)
+	root.add_child(band)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 12)
+	scroll.add_child(body)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 20)
+	body.add_child(top)
+	var close := UIKit.button("CLOSE", 20, true)
+	close.custom_minimum_size = Vector2(0, 62)
+	close.pressed.connect(func() -> void:
+		hub._close_modal()
+		hub._show_tab(hub._tab))
+	root.add_child(close)
+	return [top, body]
+
+
+static func _portrait(look: Dictionary, color: Color, size: float) -> Art:
+	return Art.make(Vector2(size, size), func(a: Control) -> void:
+		PixelArt.draw_portrait(a, Rect2(Vector2.ZERO, a.size), look, color, Color("d8e6dc")))
+
+
+static func _column(parent: Control, width: float = 0.0) -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	if width > 0.0:
+		col.custom_minimum_size = Vector2(width, 0)
+	else:
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(col)
+	return col
+
+
+static func _action(parent: Control, text: String, accent: bool, action: Callable, disabled: bool = false) -> Button:
+	var b := UIKit.button(text, 17, accent)
+	b.custom_minimum_size = Vector2(0, 58)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.disabled = disabled
+	b.pressed.connect(action)
+	parent.add_child(b)
+	return b
+
+
+static func _chip_box(parent: Control) -> HBoxContainer:
+	var chips := HBoxContainer.new()
+	chips.add_theme_constant_override("separation", 8)
+	parent.add_child(chips)
+	return chips
+
+
+# ---------------------------------------------------------------- the driver card
+
+## Everything about a driver. What it shows depends on how much of the scouting report
+## existed when the contract was signed: phase 1 pace, phase 2 racecraft, phase 3 ego,
+## potential, favourite conditions and the kind of car they want.
+static func driver_card(hub: Control, id: String, note: String = "") -> void:
+	var d := Career.driver(id)
+	if d.is_empty():
+		return
+	var level := Career.scout_level(d)
+	var racing: bool = Career.lineup().has(id)
+	var bench: bool = Career.reserves().has(id)
+	var mine := racing or bench
+	var team := Career.team(str(d["team"]))
+	var color := _team_color(str(d["team"]))
+	var made := open_full(hub, str(d["name"]), color)
+	var top: HBoxContainer = made[0]
+	var body: VBoxContainer = made[1]
+	if note != "":
+		body.move_child(hub._text(body, note, 18, UIKit.ACCENT), 0)
+	# --- who
+	var left := _column(top, 300)
+	left.add_child(_portrait(Career.person(id)["look"], color, 220))
+	hub._text(left, "#%d  ·  AGE %d" % [int(d["number"]), int(d["age"])], 18)
+	hub._text(left, str(team.get("name", "FREE AGENT")).to_upper(), 16, UIKit.TEXT_DIM)
+	hub._text(left, "%s A SEASON" % UIKit.money(float(d["salary"])), 16, UIKit.TEXT_DIM)
+	var chips := _chip_box(left)
+	chips.add_child(Art.chip("OVR", Career.driver_overall(d), UIKit.WARM) if level >= 2 else Art.chip("OVR ?", int(d.get("hype", 70)), Color("6a7078")))
+	if level >= 3:
+		chips.add_child(Art.chip("POTENTIAL", Career.potential_overall(d), UIKit.LINE))
+	if Career.is_injured(id):
+		hub._text(left, "INJURED  ·  %d RACES" % int(d["injured"]), 18, UIKit.BAD)
+	if level < 3:
+		hub._text(left, ("SIGNED WITHOUT A FULL REPORT" if mine else "SCOUT REPORT %d/3" % level), 15, UIKit.BAD)
+	# --- stats
+	var mid := _column(top, 400)
+	hub._text(mid, "STATS", 14, UIKit.HOT)
+	for stat: Array in CARD_STATS:
+		if level >= int(stat[2]):
+			mid.add_child(Art.rating_bar(stat[0], float(d[stat[1]]), UIKit.WARM if stat[1] == "ego" else UIKit.LINE, 390.0))
+		else:
+			hub._text(mid, "%-13s ??" % stat[0], 14, UIKit.TEXT_DIM)
+	if mine:
+		mid.add_child(Art.rating_bar("MORALE", float(d["morale"]), UIKit.GOOD if int(d["morale"]) >= 45 else UIKit.BAD, 390.0))
+		mid.add_child(Art.rating_bar("FITNESS", Career.fitness(d), UIKit.GOOD if Career.fitness(d) >= 60 else UIKit.BAD, 390.0))
+	# --- conditions and cars
+	var right := _column(top)
+	hub._text(right, "RACES BEST", 14, UIKit.HOT)
+	if level >= 3:
+		hub._text(right, Career.weather_label(d).get_slice("  -", 0), 18)
+		hub._text(right, "HOME: %s" % GameManager.TRACK_NAMES.get(d["home"], "?"), 18, UIKit.GOOD)
+		hub._text(right, "LOVES %s" % d["strong"], 18, UIKit.GOOD)
+		hub._text(right, "HATES %s" % d["weak"], 18, UIKit.BAD)
+		hub._text(right, "WANTS %s" % Career.car_taste(d), 15)
+	else:
+		hub._text(right, "UNKNOWN", 18, UIKit.TEXT_DIM)
+	if racing:
+		hub._text(right, "CAR", 14, UIKit.HOT)
+		for car: Dictionary in Career.cars():
+			var car_id: String = car["id"]
+			var has: bool = Career.car_for(id)["id"] == car_id
+			var fit := Career.car_fit(d, car)
+			_action(right, "%s   FIT %s%s" % [car["name"], str(fit) if level >= 3 else "??", "   (DRIVES IT)" if has else ""], has, func() -> void:
+				Career.assign_car(id, car_id)
+				driver_card(hub, id), has)
+	# --- development (your drivers)
+	if mine:
+		var dev := Frame.make("DEVELOPMENT", 8)
+		body.add_child(dev)
+		var rate := Career.development_rate(d)
+		hub._text(dev.body, "LAST RACE %+d OVR   ·   THIS SEASON %+.1f PACE   ·   ABOUT %+.2f PACE A RACE AT THIS RATE" % [int(d.get("last_gain", 0)), float(d.get("season_gain", 0.0)), rate], 16)
+		var train := HBoxContainer.new()
+		train.add_theme_constant_override("separation", 8)
+		dev.body.add_child(train)
+		for i in Career.TRAINING_NAMES.size():
+			var b := UIKit.button("%s\n%s FITNESS" % [Career.TRAINING_NAMES[i], "%+d" % Career.TRAINING_FITNESS[i]], 15, Career.training(id) == i)
+			b.custom_minimum_size = Vector2(0, 64)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.pressed.connect(func() -> void:
+				Career.set_training(id, i)
+				driver_card(hub, id))
+			train.add_child(b)
+		var sim_on: bool = d.get("sim", false)
+		_action(dev.body, "SIMULATOR PROGRAMME: %s   (%s A RACE, FASTER LEARNING, NO FITNESS COST)" % ["ON" if sim_on else "OFF", UIKit.money(Career.SIMULATOR_COST)], sim_on, func() -> void:
+			d["sim"] = not sim_on
+			GameManager.save()
+			driver_card(hub, id))
+		hub._text(dev.body, "Young drivers far from their potential improve fastest. Racing teaches more than the bench, points finishes more than retirements, and a star team-mate mentors a youngster. Below 40 fitness a driver can break down.", 13, UIKit.TEXT_DIM)
+	# --- what you can do
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	body.add_child(actions)
+	if bench:
+		for seat: String in Career.lineup():
+			_action(actions, "RACE INSTEAD OF %s" % str(Career.driver(seat)["name"]).get_slice(" ", 1).to_upper(), true, func() -> void:
+				var error := Career.promote_reserve(id, seat)
+				driver_card(hub, id, "NOW IN A RACE SEAT" if error == "" else error))
+		_action(actions, "RELEASE", false, func() -> void:
+			Career.release_reserve(id)
+			hub._close_modal()
+			hub._say("%s released." % d["name"])
+			hub._show_tab(TAB_DRIVERS))
+	elif racing:
+		for r: String in Career.reserves():
+			_action(actions, "BENCH FOR %s" % str(Career.driver(r)["name"]).get_slice(" ", 1).to_upper(), false, func() -> void:
+				var error := Career.promote_reserve(r, id)
+				driver_card(hub, id, "MOVED TO THE BENCH" if error == "" else error))
+	elif str(d["team"]) == "":
+		if level < 3:
+			_action(actions, "SCOUT  %s" % UIKit.money(Career.scout_cost(d)), false, func() -> void:
+				driver_card(hub, id, "" if Career.scout(id) else "NOT ENOUGH CASH"))
+		var fee := Career.driver_buyout(d)
+		_action(actions, "SIGN  %s" % (UIKit.money(fee) if fee > 0 else "FREE"), true, func() -> void:
+			var error := Career.sign_driver(id, "reserve")
+			driver_card(hub, id, "SIGNED  -  ON YOUR BENCH, RACE THEM FROM HERE" if error == "" else error))
+	else:
+		_action(actions, "BUY OUT  %s   (NEEDS REPUTATION %d)" % [UIKit.money(Career.release_clause(d)), Career.poach_reputation(d)], true, func() -> void:
+			var error := Career.sign_driver(id, "reserve")
+			driver_card(hub, id, "SIGNED  -  ON YOUR BENCH, RACE THEM FROM HERE" if error == "" else error))
+	AudioManager.play("click", -10.0)
+
+
+# ---------------------------------------------------------------- staff and people
+
+static func staff_card(hub: Control, id: String, note: String = "") -> void:
+	var e := Career.engineer(id)
+	var spec: Dictionary = Career.ENGINEER_SPECS[e["spec"]]
+	var hired: bool = Career.engineers().has(id)
+	var color := _team_color(str(e["team"]))
+	var made := open_full(hub, str(e["name"]), color)
+	var top: HBoxContainer = made[0]
+	var body: VBoxContainer = made[1]
+	top.add_child(_portrait(e["look"], color, 240))
+	var info := _column(top)
+	hub._text(info, str(spec["name"]), 28)
+	hub._text(info, str(spec["note"]).to_upper(), 18, UIKit.TEXT_DIM)
+	var chips := _chip_box(info)
+	chips.add_child(Art.chip("SKILL", int(e["skill"]), UIKit.WARM))
+	chips.add_child(Art.chip("AGE", int(e["age"]), Color("23262e")))
+	hub._text(info, "%s A SEASON" % UIKit.money(float(e["salary"])), 20)
+	var employer := Career.team(str(e["team"]))
+	hub._text(info, "WORKS FOR %s" % str(employer.get("name", "NOBODY")).to_upper(), 18, UIKit.TEXT_DIM)
+	if note != "":
+		hub._text(info, note, 18, UIKit.ACCENT)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	body.add_child(actions)
+	if hired:
+		_action(actions, "FIRE   (%s SEVERANCE)" % UIKit.money(float(e["salary"]) * 0.25), false, func() -> void:
+			hub._say(Career.fire_engineer(id))
+			hub._close_modal()
+			hub._show_tab(0))
+	else:
+		var fee := Career.engineer_buyout(e)
+		_action(actions, "HIRE" if fee == 0 else "POACH  -  %s BUYOUT" % UIKit.money(fee), true, func() -> void:
+			var error := Career.hire_engineer(id)
+			staff_card(hub, id, "HIRED" if error == "" else error))
+
+
+static func person_card(hub: Control, id: String) -> void:
+	var p := Career.person(id)
+	var color := _team_color(str(p["team"]))
+	var made := open_full(hub, str(p["name"]), color)
+	var top: HBoxContainer = made[0]
+	top.add_child(_portrait(p["look"], color, 240))
+	var info := _column(top)
+	hub._text(info, str(p["role"]), 28)
+	hub._text(info, str(Career.team(str(p["team"])).get("name", "")).to_upper(), 18, UIKit.TEXT_DIM)
+	hub._text(info, str(STAFF_NOTES.get(p["role"], "")), 20)
+	var count := 0
+	for m: Dictionary in Career.state()["inbox"]:
+		if m["from"] == id:
+			count += 1
+	hub._text(info, "%d MESSAGES ON YOUR PHONE" % count, 16, UIKit.TEXT_DIM)
+
+
+# ---------------------------------------------------------------- the manager card
+
+## You: the deal with the owners, your rating, history, how safe the job is, and the
+## teams that would hire you (they pay your release fee).
+static func manager_card(hub: Control, note: String = "") -> void:
+	var c := Career.state()
+	var contract := Career.manager_contract()
+	var color := _team_color(str(c["team"]))
+	var made := open_full(hub, str(c["manager"]["name"]), color)
+	var top: HBoxContainer = made[0]
+	var body: VBoxContainer = made[1]
+	if note != "":
+		body.move_child(hub._text(body, note, 18, UIKit.ACCENT), 0)
+	top.add_child(_portrait(c["manager"]["look"], color, 240))
+	var info := _column(top, 420)
+	hub._text(info, "TEAM PRINCIPAL  ·  %s" % str(Career.my_team()["name"]).to_upper(), 20)
+	var chips := _chip_box(info)
+	chips.add_child(Art.chip("RATING", Career.manager_rating(), UIKit.WARM))
+	chips.add_child(Art.chip("SEASONS", (c.get("history", []) as Array).size() + 1, Color("23262e")))
+	var years := maxi(0, int(contract["years"]))
+	hub._text(info, "DEAL  %s A YEAR" % UIKit.money(float(contract["salary"])), 22)
+	hub._text(info, "EXPIRES END OF SEASON %d  (%d YEAR%s LEFT)" % [int(c["season"]) + maxi(0, years - 1), years, "" if years == 1 else "S"], 16, UIKit.TEXT_DIM)
+	hub._text(info, "EARNED SO FAR  %s" % UIKit.money(float(c["manager"].get("earned", 0))), 16, UIKit.TEXT_DIM)
+	var job := _column(top)
+	hub._text(job, "JOB SECURITY", 14, UIKit.HOT)
+	hub._text(job, Career.job_security(), 30, UIKit.GOOD if int(c["board"]) >= 40 else UIKit.BAD)
+	job.add_child(Art.rating_bar("BOARD", int(c["board"]), UIKit.GOOD if int(c["board"]) >= 40 else UIKit.BAD, 420.0))
+	job.add_child(Art.rating_bar("REPUTATION", int(c["reputation"]), UIKit.LINE, 420.0))
+	hub._text(job, "TARGET: %s" % Career.board_target_text().to_upper(), 16, UIKit.TEXT_DIM)
+	var history := Frame.make("HISTORY", 4)
+	body.add_child(history)
+	var past: Array = c.get("history", [])
+	if past.is_empty():
+		hub._text(history.body, "FIRST SEASON IN CHARGE", 18, UIKit.TEXT_DIM)
+	for h: Dictionary in past:
+		var t := Career.team(str(h["team"]))
+		hub._text(history.body, "SEASON %d   %-18s P%d  (TARGET P%d)   %d PTS   %d WIN%s" % [int(h["season"]), str(t.get("name", "?")).to_upper().left(18), int(h["position"]), int(h["expected"]), int(h["points"]), int(h["wins"]), "" if int(h["wins"]) == 1 else "S"], 17, UIKit.GOOD if int(h["position"]) <= int(h["expected"]) else UIKit.BAD)
+	var market := Frame.make("TEAMS THAT WANT YOU", 6)
+	body.add_child(market)
+	var offers := Career.interested_teams()
+	if offers.is_empty():
+		hub._text(market.body, "NOBODY YET  -  WIN MORE RACES", 18, UIKit.TEXT_DIM)
+	for offer: Dictionary in offers:
+		var t: Dictionary = offer["team"]
+		var team_id: String = t["id"]
+		_action(market.body, "%s   ·   %s A YEAR, 2 YEARS   ·   THEY PAY YOUR %s RELEASE FEE" % [str(t["name"]).to_upper(), UIKit.money(float(offer["salary"])), UIKit.money(float(offer["fee"]))], false, func() -> void:
+			hub._show_modal("SWITCH TEAMS", str(t["name"]).to_upper(), "Leave %s for %s? Your cars, engineers and sponsor stay behind." % [Career.my_team()["name"], t["name"]], [
+				["MOVE TO %s" % str(t["short"]), func() -> void:
+					Career.move_to_team(team_id)
+					Career.state()["season_review"] = {}
+					GameManager.save()
+					hub._close_modal()
+					SceneManager.goto("career")],
+				["STAY", func() -> void: manager_card(hub)]]))
+
+
+# ---------------------------------------------------------------- hire staff
+
+static func staff_sheet(hub: Control) -> void:
+	var made := open_full(hub, "HIRE STAFF  %d / %d" % [Career.engineers().size(), Career.max_engineers()], UIKit.LINE)
+	var body: VBoxContainer = made[1]
 	for e: Dictionary in Career.engineer_market():
 		var id: String = e["id"]
+		var frame := Frame.make("", 4)
+		body.add_child(frame)
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 14)
-		list.add_child(line)
-		line.add_child(_engineer_face(e, 76))
+		frame.body.add_child(line)
+		line.add_child(_portrait(e["look"], _team_color(str(e["team"])), 76))
 		var spec: Dictionary = Career.ENGINEER_SPECS[e["spec"]]
 		var info := VBoxContainer.new()
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -50,8 +398,9 @@ static func staff_sheet(hub: Control, note: String = "") -> void:
 		b.custom_minimum_size = Vector2(170, 66)
 		b.pressed.connect(func() -> void:
 			var error := Career.hire_engineer(id)
-			staff_sheet(hub, "%s JOINS THE TEAM" % str(e["name"]).to_upper() if error == "" else error))
-		line.add_child(b)
+			staff_card(hub, id, "HIRED" if error == "" else error))
+		line.add_child(press_anim(b))
+		clickable(frame, func() -> void: staff_card(hub, id))
 
 
 # ---------------------------------------------------------------- sponsors (sheet)
@@ -92,188 +441,36 @@ static func sponsor_sheet(hub: Control, note: String = "") -> void:
 		hub._text(list, "NO OFFERS RIGHT NOW", 18, UIKit.TEXT_DIM)
 
 
-# ---------------------------------------------------------------- rival drivers (buyouts)
+# ---------------------------------------------------------------- season review
 
-static func poach_list(hub: Control) -> void:
-	var rep := int(Career.state()["reputation"])
-	hub._text(hub._content, "PAY THE RELEASE CLAUSE TO SIGN.  YOUR REPUTATION: %d" % rep, 16, UIKit.TEXT_DIM)
-	for d: Dictionary in Career.poach_targets():
-		var id: String = d["id"]
-		var team := Career.team(str(d["team"]))
-		var frame := Frame.make(str(team["name"]).to_upper(), 4)
-		hub._content.add_child(frame)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		frame.body.add_child(row)
-		row.add_child(hub._face(id, 84))
-		var info := VBoxContainer.new()
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		info.add_theme_constant_override("separation", 2)
-		row.add_child(info)
-		hub._text(info, "%s  ·  %d" % [str(d["name"]).to_upper(), int(d["age"])], 20)
-		var need := Career.poach_reputation(d)
-		hub._text(info, "OVR %d   ·   CLAUSE %s" % [Career.driver_overall(d), UIKit.money(Career.release_clause(d))], 17)
-		hub._text(info, "%s A SEASON   ·   NEEDS REPUTATION %d" % [UIKit.money(float(d["salary"])), need], 14, UIKit.TEXT_DIM if rep >= need else UIKit.BAD)
-		var card := UIKit.button("CARD", 15)
-		card.custom_minimum_size = Vector2(100, 70)
-		card.pressed.connect(func() -> void: driver_card(hub, id))
-		row.add_child(card)
-		if hub._pending_seat == id:
-			var choices := VBoxContainer.new()
-			choices.add_theme_constant_override("separation", 4)
-			row.add_child(choices)
-			var seats: Array = Career.lineup().duplicate()
-			if Career.reserves().size() < Career.MAX_RESERVES:
-				seats.append("reserve")
-			for seat: String in seats:
-				var text := "AS RESERVE" if seat == "reserve" else "FOR %s" % str(Career.driver(seat)["name"]).get_slice(" ", 1).to_upper()
-				var b := UIKit.button(text, 14, true)
-				b.custom_minimum_size = Vector2(210, 40)
-				b.pressed.connect(func() -> void:
-					var error := Career.sign_driver(id, seat)
-					hub._pending_seat = ""
-					hub._say("%s bought out of the contract and signed." % d["name"] if error == "" else error, error == "")
-					hub._show_tab(TAB_SCOUTING))
-				choices.add_child(b)
-		else:
-			var buy := UIKit.button("BUY OUT", 17, true)
-			buy.custom_minimum_size = Vector2(140, 70)
-			buy.pressed.connect(func() -> void:
-				hub._pending_seat = id
-				hub._show_tab(TAB_SCOUTING))
-			row.add_child(buy)
-
-
-# ---------------------------------------------------------------- the driver card
-
-## Full-screen card for one driver. What it shows depends on how much of the scouting
-## report existed when the contract was signed: phase 1 pace, phase 2 racecraft, phase 3
-## ego, potential, favourite conditions and the kind of car they want.
-static func driver_card(hub: Control, id: String) -> void:
-	var d := Career.driver(id)
-	if d.is_empty():
-		return
-	var level := Career.scout_level(d)
-	var mine: bool = Career.lineup().has(id) or Career.reserves().has(id)
-	var team := Career.team(str(d["team"]))
-	var c1 := Color(str(team["color"])) if not team.is_empty() else Color("6a7078")
-	var c2 := Color(str(team.get("color2", "#f4f6f2")))
-	hub._close_modal()
-	var modal := Control.new()
-	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hub.add_child(modal)
-	hub._modal = modal
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.78)
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal.add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal.add_child(center)
-	var panel := UIKit.panel(UIKit.PANEL, c1)
-	panel.custom_minimum_size = Vector2(1080, 0)
-	center.add_child(panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	panel.add_child(box)
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 18)
-	box.add_child(cols)
-	# --- left: who they are
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 6)
-	cols.add_child(left)
-	var faces := HBoxContainer.new()
-	faces.add_theme_constant_override("separation", 8)
-	left.add_child(faces)
-	faces.add_child(hub._face(id, 160))
-	var side := VBoxContainer.new()
-	side.add_theme_constant_override("separation", 6)
-	faces.add_child(side)
-	side.add_child(Art.make(Vector2(76, 76), func(a: Control) -> void:
-		a.draw_rect(Rect2(Vector2.ZERO, a.size), UIKit.BG_DEEP)
-		PixelArt.draw_helmet(a, Rect2(Vector2.ZERO, a.size), c1, c2, int(d["number"]))))
-	if not team.is_empty():
-		side.add_child(Art.make(Vector2(76, 76), func(a: Control) -> void: PixelArt.draw_logo(a, Rect2(Vector2.ZERO, a.size), team)))
-	hub._text(left, str(d["name"]).to_upper(), 22)
-	hub._text(left, "#%d  ·  AGE %d  ·  %s" % [int(d["number"]), int(d["age"]), str(team.get("name", "FREE AGENT")).to_upper()], 12, UIKit.TEXT_DIM)
-	hub._text(left, "SALARY %s  ·  RELEASE CLAUSE %s" % [UIKit.money(float(d["salary"])), UIKit.money(Career.release_clause(d))], 12, UIKit.TEXT_DIM)
-	var chips := HBoxContainer.new()
-	chips.add_theme_constant_override("separation", 8)
-	left.add_child(chips)
-	if level >= 2:
-		chips.add_child(Art.chip("OVR", Career.driver_overall(d), UIKit.WARM))
-	else:
-		chips.add_child(Art.chip("OVR ??", int(d.get("hype", 70)), Color("6a7078")))
-	if level >= 3:
-		var potential := Career.potential_overall(d)
-		chips.add_child(Art.chip("POTENTIAL", potential, UIKit.LINE if potential > Career.driver_overall(d) + 3 else Color("23262e")))
-	else:
-		chips.add_child(Art.make(Vector2(74, 58), func(a: Control) -> void:
-			a.draw_rect(Rect2(Vector2.ZERO, a.size), Color("6a7078"))
-			a.draw_rect(Rect2(Vector2.ZERO, a.size), UIKit.INK, false, 3.0)
-			a.draw_string(UIKit.font(), Vector2(0, 16), "POTENTIAL", HORIZONTAL_ALIGNMENT_CENTER, a.size.x, 10, Color.WHITE)
-			a.draw_string(UIKit.font(), Vector2(0, 46), "??", HORIZONTAL_ALIGNMENT_CENTER, a.size.x, 28, Color.WHITE)))
-	if Career.is_injured(id):
-		hub._text(left, "INJURED  -  OUT %d RACES" % int(d["injured"]), 13, UIKit.BAD)
-	if level < 3:
-		var why := "Signed without a full scouting report (%d/3). What the scouts never wrote down stays unknown." % level if mine else "Scouting report %d/3. Finish it BEFORE signing to see everything." % level
-		var note: Label = hub._text(left, why, 11, UIKit.BAD)
-		note.custom_minimum_size = Vector2(260, 0)
-	# --- middle: every stat
-	var mid := VBoxContainer.new()
-	mid.add_theme_constant_override("separation", 3)
-	cols.add_child(mid)
-	hub._text(mid, "STATS", 12, UIKit.HOT)
-	for stat: Array in CARD_STATS:
-		if level >= int(stat[2]):
-			mid.add_child(Art.rating_bar(stat[0], float(d[stat[1]]), UIKit.WARM if stat[1] == "ego" else UIKit.LINE, 330.0))
-		else:
-			hub._text(mid, "%-13s ??   (scouting phase %d)" % [stat[0], int(stat[2])], 11, UIKit.TEXT_DIM)
-	if mine:
-		mid.add_child(Art.rating_bar("MORALE", float(d["morale"]), UIKit.GOOD if int(d["morale"]) >= 45 else UIKit.BAD, 330.0))
-	# --- right: where and in what they are quick
-	var right := VBoxContainer.new()
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override("separation", 4)
-	cols.add_child(right)
-	hub._text(right, "RACES BEST WHEN", 12, UIKit.HOT)
-	if level >= 3:
-		hub._text(right, "WEATHER    %s" % Career.weather_label(d), 12)
-		hub._text(right, "HOME TRACK %s  (-%.2f s a lap)" % [GameManager.TRACK_NAMES.get(d["home"], "?"), Career.HOME_GAIN], 12, UIKit.GOOD)
-		hub._text(right, "LOVES      %s CIRCUITS  (-%.2f s)" % [d["strong"], Career.TYPE_GAIN], 12, UIKit.GOOD)
-		hub._text(right, "STRUGGLES  %s CIRCUITS  (+%.2f s)" % [d["weak"], Career.TYPE_GAIN], 12, UIKit.BAD)
-		var kinds := PackedStringArray()
-		for track_id: String in GameManager.TRACKS:
-			var form := Career.track_form(d, track_id)
-			if form != 0.0:
-				kinds.append("%s %+.2f" % [GameManager.TRACK_NAMES[track_id], -form])
-		hub._text(right, "BY TRACK   %s" % "   ".join(kinds), 11, UIKit.TEXT_DIM)
-		hub._text(right, "CAR        WANTS %s" % Career.car_taste(d), 12)
-	else:
-		hub._text(right, "Weather, home track, favourite circuits and the car they want are on the last page of the scouting report.", 12, UIKit.TEXT_DIM)
-	hub._text(right, "YOUR CARS", 12, UIKit.HOT)
-	for car: Dictionary in Career.cars():
-		var car_id: String = car["id"]
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 8)
-		right.add_child(line)
-		var fit := Career.car_fit(d, car)
-		var has: bool = Career.lineup().has(id) and Career.car_for(id)["id"] == car_id
-		var label: Label = hub._text(line, "%s  OVR %d  FIT %s" % [car["name"], int(round(Career.car_overall(car))), str(fit) if level >= 3 else "??"], 12, UIKit.GOOD if fit >= 80 and level >= 3 else UIKit.TEXT)
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if Career.lineup().has(id):
-			var b := UIKit.button("DRIVES IT" if has else "ASSIGN", 11, has)
-			b.custom_minimum_size = Vector2(120, 34)
-			b.disabled = has
-			b.pressed.connect(func() -> void:
-				Career.assign_car(id, car_id)
-				driver_card(hub, id))
-			line.add_child(b)
-	var close := UIKit.button("CLOSE", 15, true)
-	close.custom_minimum_size = Vector2(0, 48)
-	close.pressed.connect(func() -> void:
-		hub._close_modal()
-		hub._show_tab(hub._tab))
-	box.add_child(close)
-	AudioManager.play("click", -10.0)
+## Shown at HQ when a season ends: the result, then on into the next season - or, if your
+## contract has run out, the renewal or a move.
+static func season_review(hub: Control) -> void:
+	var c := Career.state()
+	var r: Dictionary = c["season_review"]
+	var body := "P%d IN THE CONSTRUCTORS   ·   PRIZE %s\nDRIVERS' CHAMPION: %s\nCONSTRUCTORS' CHAMPION: %s" % [int(r["position"]), UIKit.money(float(r["payout"])), str(r["champion"]).to_upper(), str(r.get("team_champion", "?")).to_upper()]
+	var options: Array = []
+	match str(r.get("contract", "")):
+		"renew":
+			var contract := Career.manager_contract()
+			body += "\n\nYour contract is up. The owners offer a new one."
+			options.append(["SIGN: %s A YEAR FOR 2 YEARS" % UIKit.money(float(contract["salary"]) * 1.1), func() -> void:
+				Career.renew_contract()
+				hub._close_modal()
+				hub._show_tab(0)])
+			options.append(["LOOK AT OTHER TEAMS", func() -> void: manager_card(hub, "CHOOSE YOUR NEXT TEAM - OR CLOSE AND SIGN THE RENEWAL")])
+		"expired":
+			body += "\n\nYour contract is up and the owners will not renew it."
+			if Career.interested_teams().is_empty():
+				options.append(["START A NEW CAREER", func() -> void:
+					Career.end_career()
+					SceneManager.goto("career_start")])
+			else:
+				options.append(["SEE THE TEAMS THAT WANT YOU", func() -> void: manager_card(hub, "PICK YOUR NEXT TEAM")])
+		_:
+			options.append(["START SEASON %d" % int(c["season"]), func() -> void:
+				c["season_review"] = {}
+				GameManager.save()
+				hub._close_modal()
+				hub._show_tab(0)])
+	hub._show_modal("SEASON %d COMPLETE" % int(r["season"]), "SEASON REVIEW", body, options)

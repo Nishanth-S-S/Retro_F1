@@ -62,20 +62,7 @@ func _run() -> void:
 	await _shot("e_saves")
 	await _goto("res://scenes/career/RaceDay.tscn")
 	await _shot("e_raceday")
-	var wall := await _goto("res://scenes/career/PitWall.tscn")
-	await _shot("f_pitwall_grid")
-	var sim: GPSim = wall.get("sim")
-	wall.set("_started", true)
-	for i in 7:
-		sim.step()
-	sim.cars[9]["status"] = "PIT"
-	wall.call("_refresh")
-	wall.set("_lap_anim", 0.4)
-	await _shot("g_pitwall_race")
-	while not sim.finished():
-		sim.step()
-	sim.flags["collision"] = true
-	await get_tree().create_timer(0.3).timeout
+	RaceReport.show(get_tree().current_scene, Career.quick_sim())
 	await _shot("h_report")
 	hub = await _goto("res://scenes/career/CareerHub.tscn")
 	await _shot("i_event")

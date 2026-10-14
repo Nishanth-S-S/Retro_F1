@@ -18,6 +18,9 @@ const DAMAGE_PER_MS := 1.9
 ## Percent of the tank burned per metre at full throttle with a 100 %-efficiency engine
 ## (about six laps of Falcon Ridge). Thirsty engines will need a stop in a five-lap race.
 const FUEL_PER_METRE := 0.0061
+## Damage from wear and tear (percent per metre): vibration, kerbs and debris add up so a
+## full race needs a stop or two. Kerbs and running off the track wear the car faster.
+const WEAR_PER_METRE := 0.0034
 
 @export var physics_config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 
@@ -60,6 +63,8 @@ var assist_steer_weight := 0.0
 var assist_brake := 0.0
 ## Wet track: rear tires throw up spray.
 var wet := false
+## The pit-lane autopilot drives (player inputs are ignored while it is on).
+var autopilot := false
 
 var _teleport_pending := false
 var _teleport_transform := Transform2D()
@@ -199,7 +204,7 @@ func place(pos: Vector2, heading: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	_collision_cooldown = maxf(0.0, _collision_cooldown - delta)
-	if is_player and controls_enabled:
+	if is_player and controls_enabled and not autopilot:
 		input.update_player(delta)
 	if track:
 		track_index = track.nearest_index(global_position, track_index)
@@ -235,7 +240,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var steer := input.steer if controls_enabled else 0.0
 	var throttle := input.throttle if controls_enabled else 0.0
 	var brake := input.brake if controls_enabled else 1.0
-	if is_player and controls_enabled:
+	if is_player and controls_enabled and not autopilot:
 		if assist_steer_weight > 0.0:
 			steer = lerpf(steer, assist_steer, assist_steer_weight)
 		if assist_brake > 0.0:
@@ -247,6 +252,12 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		var impact := (velocity - _last_velocity).length()
 		if impact > DAMAGE_THRESHOLD:
 			_apply_damage((impact - DAMAGE_THRESHOLD) * DAMAGE_PER_MS)
+	if takes_damage and controls_enabled and not is_destroyed and not autopilot:
+		var rough := 2.5 if on_curb else (4.0 if off_track else 1.0)
+		var wear := velocity.length() * state.step * WEAR_PER_METRE * rough * damage_scale
+		# Wear alone never finishes the car off; it just keeps getting worse.
+		damage = minf(damage + wear, maxf(damage, 95.0))
+	physics.damage_loss = clampf((damage - 25.0) / 75.0, 0.0, 1.0) if takes_damage else 0.0
 	var yaw_rate := clampf(state.angular_velocity, -physics_config.max_yaw_rate, physics_config.max_yaw_rate)
 	var heading := state.transform.get_rotation()
 	var local := velocity.rotated(-heading)
@@ -258,7 +269,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 			gearbox.shift_up()
 		if input.shift_down:
 			gearbox.shift_down(local.x, physics_config.wheel_radius, physics.engine.redline_rpm)
-		if gearbox.automatic:
+		if gearbox.automatic and not autopilot:
 			if gearbox.gear >= 1 and absf(local.x) < 0.6 and brake > 0.3 and throttle < 0.05:
 				_reverse_timer += state.step
 				if _reverse_timer > REVERSE_HOLD_TIME:

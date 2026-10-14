@@ -56,9 +56,29 @@ var _objective_done := false
 ## Seconds left in the current pit stop (0 = not in the pits).
 var pit_timer := 0.0
 var _pit_total := 0.0
+## "" racing, "in" driving down the lane, "service" crew at work, "out" leaving the lane.
+var pit_phase := ""
+var _pit_choice := ""
+var _crew: PitCrewFX
+var _stops := 0
+var _dry_compounds := {}
+var _used_wet := false
+var _ai_pit_lap: Array = []
+var _drs_zones: Array = []
+var drs_available := false
+var drs_open := false
+## Seconds added to the player's race time (track limits, skipped pit stop).
+var race_penalty := 0.0
+var _strikes := 0
+var _was_off := false
+var _controls_layer: CanvasLayer
+var _quali_attempts := 0
+const PIT_SPEED := 22.2               # 80 km/h
 ## 0 dry, 1 light rain, 2 heavy rain.
 var weather := 0
 var _assist_profile := PackedFloat32Array()
+var _crowd: AudioStreamPlayer
+var _gantry: StartGantry
 
 
 func _ready() -> void:
@@ -82,6 +102,21 @@ func _ready() -> void:
 	var rain := WeatherFX.new()
 	rain.level = weather
 	add_child(rain)
+	_gantry = StartGantry.new()
+	_gantry.track = track_node.data
+	add_child(_gantry)
+	if GameManager.session_night:
+		var dark := CanvasModulate.new()
+		dark.color = Color(0.3, 0.34, 0.5)
+		add_child(dark)
+		var lights := NightLights.new()
+		lights.lamps = track_node.lamp_positions
+		lights.stands = track_node.stand_positions
+		add_child(lights)
+	# The crowd gets louder as you come past the grandstands.
+	_crowd = AudioManager.make_loop_player("crowd", false) as AudioStreamPlayer
+	add_child(_crowd)
+	_crowd.play()
 	line = RacingLine.build(track)
 	var line_path := Path2D.new()
 	line_path.name = "RacingLinePath"
@@ -111,6 +146,10 @@ func _ready() -> void:
 	controls_layer.layer = 9
 	add_child(controls_layer)
 	controls_layer.add_child(_controls)
+	_controls_layer = controls_layer
+	_find_drs_zones()
+	_plan_ai_stops()
+	_note_compound()
 	_controls.input = player.input
 	var debug := DebugOverlay.new()
 	debug.manager = self
@@ -153,7 +192,7 @@ func _spawn_cars() -> void:
 	player.damage_scale = Difficulty.damage_scale()
 	player.wet = weather > 0
 	# Conservative line speeds for the braking aid, on today's grip.
-	_assist_profile = line.speed_profile(player.physics.stats, player.physics_config, (0.93 if weather == 0 else 0.86) * WeatherFX.grip(weather), 0.85 if weather == 0 else 0.75)
+	_assist_profile = line.speed_profile(player.physics.stats, player.physics_config, (0.93 if weather == 0 else 0.86) * WeatherFX.tire_grip(weather, player.setup), 0.85 if weather == 0 else 0.75)
 	player.uses_fuel = mode == GameManager.MODE_RACE
 	player.damaged.connect(_on_player_damaged)
 	player.destroyed.connect(_on_player_destroyed)
@@ -178,14 +217,14 @@ func _spawn_cars() -> void:
 		profile["pace"] = clampf(float(profile.get("pace", 0.92)) + Difficulty.ai_pace_offset(), 0.8, 1.0)
 		profile["aggression"] = clampf(float(profile.get("aggression", 0.5)) * Difficulty.ai_aggression_scale(), 0.1, 1.0)
 		# In the wet everyone leaves a margin; the rain specialists leave less of one.
-		profile["track_grip"] = WeatherFX.grip(weather) * (lerpf(0.84, 0.93, float(profile.get("wet", 0.75))) if weather > 0 else 1.0)
 		var setup := _ai_setup(profile.get("setup", {}))
+		profile["track_grip"] = WeatherFX.tire_grip(weather, setup) * (lerpf(0.84, 0.93, float(profile.get("wet", 0.75))) if weather > 0 else 1.0)
 		var car := _make_car(setup, profile["name"], Color(profile.get("color", "#ffffff")), false, i + 1, "res://scenes/components/AICar.tscn", Color(str(profile.get("color2", "#23272e"))))
 		_place_on_grid(car, slot)
 		var driver := AIDriver.new()
 		driver.name = "Driver"
 		car.add_child(driver)
-		car.physics.grip_scale = WeatherFX.grip(weather)
+		car.physics.grip_scale = WeatherFX.tire_grip(weather, setup)
 		car.wet = weather > 0
 		driver.setup(car, line, profile, 1000 + i * 77 + randi() % 1000)
 		driver.needs_recovery.connect(_recover_car)
@@ -250,10 +289,12 @@ func _apply_settings() -> void:
 	player.physics.tc_level = int(GameManager.setting("traction_control"))
 	player.physics.transmission.automatic = bool(GameManager.setting("automatic"))
 	player.physics.stability_assist = 1.0 if bool(GameManager.setting("stability_assist")) else 0.0
-	player.physics.grip_scale = WeatherFX.grip(weather) * Difficulty.player_grip()
+	player.physics.grip_scale = WeatherFX.tire_grip(weather, player.setup) * Difficulty.player_grip()
 	player.damage_scale = Difficulty.damage_scale()
 	_line_assist.visible = bool(GameManager.setting("racing_line"))
 	_camera.rotate_with_car = bool(GameManager.setting("camera_rotation"))
+	_camera.driver_view = int(GameManager.setting("camera_mode")) == 1
+	_hud.set_driver_view(_camera.driver_view)
 
 
 # ---------------------------------------------------------------- loop
@@ -273,6 +314,7 @@ func _physics_process(delta: float) -> void:
 			if lights != _last_lights:
 				_last_lights = lights
 				_hud.set_countdown(lights)
+				_gantry.set_lit(lights + 2 if lights > 0 else 0)
 				if lights > 0:
 					AudioManager.play("beep", -6.0)
 		if _countdown <= 0.0:
@@ -298,6 +340,7 @@ var _last_lights := -1
 
 func _start() -> void:
 	state = State.RACING
+	_gantry.set_lit(0)
 	_hud.set_countdown(-1)
 	_hud.flash_go()
 	AudioManager.play("go", -4.0)
@@ -325,11 +368,26 @@ func _update_player(delta: float) -> void:
 			_ghost.rotation = rot
 			_ghost.global_position = (_ghost_sample["position"] as Vector2) - Vector2.RIGHT.rotated(rot) * player.physics.stats.cg_x * PPM
 	_driver_feedback(delta)
-	_update_assists()
+	_update_crowd(delta)
+	_update_rules(delta)
+	if pit_phase == "":
+		_update_assists()
+	else:
+		player.assist_steer_weight = 0.0
+		player.assist_brake = 0.0
 	_update_pit_stop(delta)
 	if state == State.RACING and not _objective_done and _mission.get("objective", {}).get("type", "") == "max_speed":
 		if player.speed * 3.6 >= float(_mission["objective"]["target"]):
 			_complete_objective()
+
+
+func _update_crowd(delta: float) -> void:
+	var nearest := INF
+	for p in track_node.stand_positions:
+		nearest = minf(nearest, p.distance_to(player.global_position) / PPM)
+	var closeness := clampf(1.0 - (nearest - 25.0) / 230.0, 0.0, 1.0)
+	var want := lerpf(-38.0, -4.0, closeness * closeness)
+	_crowd.volume_db = lerpf(_crowd.volume_db, want, minf(1.0, 3.0 * delta))
 
 
 # ---------------------------------------------------------------- driving aids
@@ -366,31 +424,224 @@ func _update_assists() -> void:
 
 # ---------------------------------------------------------------- pit stops
 
-## Stop in the red service box on the pit lane to repair damage, refuel and take new tires.
-## The stop takes longer the more work there is, and less with a better pit crew.
+## Roll into the pit lane and the stop plays itself: the car drives down the lane at the
+## 80 km/h limit, the crew swaps tyres, fixes damage and refuels, you pick the next tyre,
+## and the car is released at the lane exit. A better pit crew (factory level) is faster.
 func _update_pit_stop(delta: float) -> void:
 	if state != State.RACING or player.is_destroyed:
 		return
-	if pit_timer > 0.0:
-		pit_timer -= delta
-		if pit_timer <= 0.0:
-			pit_timer = 0.0
-			player.damage = 0.0
-			player.fuel = 100.0
-			player.physics.reset_wear_and_heat()
-			player.controls_enabled = true
-			EventBus.driver_message.emit("GO GO GO  -  %.1f s STOP" % _pit_total, Color("5fe08a"))
-			AudioManager.play("go", -6.0)
+	var lane := -(track.half_width + TrackData.PIT_WIDTH * 0.55)
+	match pit_phase:
+		"":
+			if track.in_pit_lane(player.progress, player.lateral) and player.lateral < -(track.half_width + 0.8) and player.progress < track.pit_box - 25.0:
+				_begin_pit()
+		"in":
+			var to_box := track.pit_box - player.progress
+			_autodrive(lane, minf(PIT_SPEED, sqrt(maxf(0.0, 2.0 * 7.0 * (to_box - 0.6)))))
+			if to_box < 1.6 and player.speed < 0.8:
+				_start_service()
+		"service":
+			player.input.throttle = 0.0
+			player.input.brake = 1.0
+			pit_timer = maxf(0.0, pit_timer - delta)
+			_crew.progress = 1.0 - pit_timer / maxf(_pit_total, 0.01)
+			if pit_timer <= 0.0:
+				_finish_service()
+		"out":
+			var past := player.progress - (track.pit_end - 70.0)
+			_autodrive(lerpf(lane, -2.5, clampf(past / 60.0, 0.0, 1.0)), PIT_SPEED if past < 0.0 else 40.0)
+			if player.progress > track.pit_end - 8.0:
+				pit_phase = ""
+				player.autopilot = false
+				_camera.focus = Vector2.INF
+				_controls_layer.visible = true
+				_hud.show_tyre_choice([], "", false)
+
+
+func _begin_pit() -> void:
+	pit_phase = "in"
+	player.autopilot = true
+	_controls.release_all()
+	_controls_layer.visible = false
+	_camera.focus = track.position_at(track.pit_box, -(track.half_width + TrackData.PIT_WIDTH * 0.55))
+	EventBus.driver_message.emit("PIT LANE  -  80 KM/H", Color("ffb347"))
+	# Pick the next tyre now; it can be changed until the car leaves.
+	_pit_choice = _default_tyre()
+	_hud.show_tyre_choice(_tyre_options(), _pit_choice, _stop_still_required())
+
+
+func _start_service() -> void:
+	pit_phase = "service"
+	var crew := int(Career.state()["factory"]["pit"]) if Career.active() else 2
+	_pit_total = maxf(1.9, 2.9 - 0.22 * crew) + player.damage * 0.045 + (100.0 - player.fuel) * 0.02
+	# Even good crews fumble now and then; bad ones more often.
+	if randf() < 0.14 - crew * 0.02:
+		_pit_total += randf_range(1.2, 3.0)
+		EventBus.driver_message.emit("WHEEL NUT STUCK!", Color("ff5d5d"))
+	pit_timer = _pit_total
+	_crew = PitCrewFX.new()
+	_crew.car = player
+	_crew.color = player.body_color
+	_crew.color2 = player.accent_color
+	_crew.wing = player.damage > 30.0
+	_crew.new_tire = CarVisual.COMPOUND_COLORS.get(_pit_choice, Color.WHITE)
+	add_child(_crew)
+	AudioManager.play("snap", -4.0)
+
+
+func _finish_service() -> void:
+	var setup := player.setup
+	if _pit_choice != "" and setup.parts.get("tires", "") != _pit_choice:
+		setup.install("tires", _pit_choice)
+		player.configure(setup, track)
+		_apply_settings()
+	_note_compound()
+	player.damage = 0.0
+	player.fuel = 100.0
+	player.physics.reset_wear_and_heat()
+	_stops += 1
+	_crew.queue_free()
+	_crew = null
+	pit_phase = "out"
+	EventBus.driver_message.emit("GO GO GO  -  %.1f s STOP" % _pit_total, Color("5fe08a"))
+	AudioManager.play("go", -6.0)
+
+
+func choose_tyre(part_id: String) -> void:
+	_pit_choice = part_id
+	if _crew:
+		_crew.new_tire = CarVisual.COMPOUND_COLORS.get(part_id, Color.WHITE)
+	_hud.show_tyre_choice(_tyre_options(), _pit_choice, _stop_still_required())
+
+
+## Every compound the tyre supplier brings for you (anything your R&D has unlocked).
+func _tyre_options() -> Array:
+	var out: Array = []
+	for part: VehiclePart in PartDB.parts_in("tires"):
+		if GameManager.is_unlocked(part.id):
+			out.append(part.id)
+	return out
+
+
+func _default_tyre() -> String:
+	var current: String = player.setup.parts.get("tires", "tires_hard")
+	if weather > 0:
+		return "tires_wet" if weather == 2 and GameManager.is_unlocked("tires_wet") else ("tires_inter" if GameManager.is_unlocked("tires_inter") else current)
+	if not _stop_still_required():
+		return current
+	for id: String in ["tires_medium", "tires_hard", "tires_soft"]:
+		if id != current and GameManager.is_unlocked(id):
+			return id
+	for id: String in _tyre_options():
+		var part := PartDB.get_part(id)
+		if id != current and part.stat("wet", 0.0) == 0.0:
+			return id
+	return current
+
+
+func _note_compound() -> void:
+	var part := player.setup.part("tires")
+	if part and part.stat("wet", 0.0) == 0.0:
+		_dry_compounds[part.id] = true
+	elif part:
+		_used_wet = true
+
+
+## Grand Prix rule: two different dry compounds in a dry race (wet tyres excuse it).
+func _stop_still_required() -> bool:
+	return mode == GameManager.MODE_RACE and GameManager.mandatory_stop and weather == 0 and not _used_wet and _dry_compounds.size() < 2
+
+
+func _autodrive(lateral: float, target_speed: float) -> void:
+	var look := player.progress + 7.0 + player.speed * 0.45
+	var to_target := (track.position_at(look, lateral) - player.global_position).rotated(-player.rotation) / PPM
+	var dist := maxf(to_target.length(), 1.0)
+	var wheel := atan(2.0 * player.physics_config.wheelbase * to_target.y / (dist * dist))
+	player.input.steer = clampf(wheel / player.physics_config.max_steer_angle(player.speed), -1.0, 1.0)
+	var error := target_speed - player.speed
+	player.input.throttle = clampf(error * 0.3, 0.0, 0.7)
+	player.input.brake = clampf(-error * 0.35, 0.0, 1.0)
+
+
+## Rivals stop once in a Grand Prix too, on lap 2 or 3, driving through the same pit lane.
+func _plan_ai_stops() -> void:
+	_ai_pit_lap.clear()
+	for i in cars.size():
+		var lap := -1
+		if mode == GameManager.MODE_RACE and GameManager.mandatory_stop and i > 0:
+			lap = randi_range(1, maxi(1, GameManager.race_laps - 2))
+		_ai_pit_lap.append(lap)
+
+
+# ---------------------------------------------------------------- racing rules
+
+## DRS zones: the long straights. Within one second of the car ahead at the zone, from
+## lap 2, the rear flap may open until the driver brakes.
+func _find_drs_zones() -> void:
+	_drs_zones.clear()
+	var i := 0
+	var n := track.count
+	while i < n:
+		if absf(track.curvature[i]) < 0.0025:
+			var start := i
+			while i < n and absf(track.curvature[i]) < 0.0025:
+				i += 1
+			if (i - start) * track.spacing >= 380.0:
+				_drs_zones.append(Vector2((start * track.spacing) + 60.0, (i * track.spacing) - 50.0))
+		else:
+			i += 1
+
+
+func _in_drs_zone(progress: float) -> bool:
+	for z: Vector2 in _drs_zones:
+		if progress >= z.x and progress <= z.y:
+			return true
+	return false
+
+
+## Seconds to the car directly ahead on the road (INF when nobody is close).
+func _gap_ahead(car: VehicleController) -> float:
+	var best := INF
+	for other in cars:
+		if other == car:
+			continue
+		var d := track.progress_delta(car.progress, other.progress)
+		if d > 0.0 and d < best:
+			best = d
+	return best / maxf(car.speed, 10.0)
+
+
+func _update_rules(_delta: float) -> void:
+	if state != State.RACING or mode != GameManager.MODE_RACE:
+		drs_available = false
 		return
-	var p := player.physics
-	var needs_service := player.damage > 1.0 or player.fuel < 97.0 or p.front_tire.wear < 0.97 or p.rear_tire.wear < 0.97
-	if needs_service and player.speed < 2.5 and track.in_pit_box(player.progress, player.lateral):
-		var crew := int(Career.state()["factory"]["pit"]) if Career.active() else 2
-		_pit_total = maxf(2.0, 3.2 - 0.3 * crew) + player.damage * 0.07 + (100.0 - player.fuel) * 0.03
-		pit_timer = _pit_total
-		player.controls_enabled = false
-		EventBus.driver_message.emit("PIT STOP  -  %.1f s" % _pit_total, Color("ffb347"))
-		AudioManager.play("snap", -4.0)
+	# DRS for everyone.
+	for i in cars.size():
+		var car := cars[i]
+		var eligible := timers[i].laps_completed >= 1 and _in_drs_zone(car.progress) and _gap_ahead(car) < 1.0
+		if i == 0:
+			drs_available = eligible and pit_phase == ""
+			if not drs_available or car.input.brake > 0.1:
+				drs_open = false
+			car.physics.aero.drs = drs_open
+		else:
+			drivers[i - 1].drs_allowed = eligible
+	# Track limits: three warnings, then five seconds each time.
+	var off := player.off_track and pit_phase == "" and player.speed > 10.0
+	if off and not _was_off:
+		_strikes += 1
+		if _strikes <= 3:
+			EventBus.driver_message.emit("TRACK LIMITS  -  WARNING %d/3" % _strikes, Color("ffb347"))
+		else:
+			race_penalty += 5.0
+			EventBus.driver_message.emit("TRACK LIMITS  -  +5 s PENALTY", Color("ff5d5d"))
+	_was_off = off
+
+
+func open_drs() -> void:
+	if drs_available:
+		drs_open = true
+		AudioManager.play("click", -6.0, 0.7)
 
 
 # ---------------------------------------------------------------- damage and story
@@ -441,8 +692,9 @@ func _driver_feedback(delta: float) -> void:
 	_feedback("REAR TIRES OVERHEATING", p.rear_tire.is_overheating(), 0.5, 9.0, Color("ff5d5d"), delta)
 	_feedback("BRAKE FADE", p.brakes.is_fading(), 0.3, 9.0, Color("ff5d5d"), delta)
 	_feedback("ENGINE HOT  ·  POWER REDUCED", p.engine.is_overheating(), 1.0, 12.0, Color("ff5d5d"), delta)
-	_feedback("FUEL LOW  -  BOX THIS LAP", player.uses_fuel and player.fuel < 22.0 and pit_timer <= 0.0, 0.5, 25.0, Color("ffb347"), delta)
-	_feedback("HEAVY DAMAGE  -  BOX FOR REPAIRS", player.damage > 60.0 and pit_timer <= 0.0, 0.5, 25.0, Color("ff5d5d"), delta)
+	_feedback("FUEL LOW  -  BOX THIS LAP", player.uses_fuel and player.fuel < 22.0 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
+	_feedback("HEAVY DAMAGE  -  BOX FOR REPAIRS", player.damage > 60.0 and pit_phase == "", 0.5, 25.0, Color("ff5d5d"), delta)
+	_feedback("PIT STOP STILL REQUIRED", _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2 and pit_phase == "", 0.5, 30.0, Color("ffb347"), delta)
 
 
 func _feedback(text: String, condition: bool, hold: float, cooldown: float, color: Color, delta: float) -> void:
@@ -475,7 +727,36 @@ func _on_player_sector(sector: int, sector_time: float) -> void:
 		EventBus.driver_message.emit(text, color)
 
 
+## The car's ideal lap here: its own speed profile driven perfectly. Qualifying laps are
+## judged against it, so a well-driven slow car still gets credit.
+func ideal_lap() -> float:
+	var profile := line.speed_profile(player.physics.stats, player.physics_config, WeatherFX.tire_grip(weather, player.setup), 1.0)
+	var t := 0.0
+	for v in profile:
+		t += track.spacing / maxf(v, 5.0)
+	return t
+
+
+func _quali_lap(lap_time: float, valid: bool) -> void:
+	var driver_id: String = GameManager.career_race["quali"]
+	_quali_attempts += 1
+	if valid:
+		var grid := Career.apply_quali(driver_id, lap_time, lap_time / ideal_lap())
+		EventBus.driver_message.emit("QUALIFIED  P%d  ·  %s" % [grid, LapTimer.format_time(lap_time)], Color("c77dff"))
+	elif _quali_attempts < 3:
+		EventBus.driver_message.emit("LAP DELETED  -  GO AGAIN (%d LEFT)" % (3 - _quali_attempts), Color("ff5d5d"))
+		return
+	else:
+		EventBus.driver_message.emit("NO VALID LAP  -  GRID UNCHANGED", Color("ff5d5d"))
+	state = State.FINISHED
+	_finish_timer = 2.4
+	player.controls_enabled = false
+
+
 func _on_player_lap(lap_time: float, valid: bool, lap_number: int) -> void:
+	if GameManager.career_race.has("quali"):
+		_quali_lap(lap_time, valid)
+		return
 	EventBus.lap_completed.emit(player, lap_time, valid)
 	if valid and (_session_best <= 0.0 or lap_time < _session_best):
 		_session_best = lap_time
@@ -507,10 +788,15 @@ func _on_player_lap(lap_time: float, valid: bool, lap_number: int) -> void:
 		var kind: String = objective.get("type", "")
 		if kind == "complete_lap" or (kind == "lap_time" and lap_time <= float(objective.get("target", 0.0))):
 			_complete_objective()
-	if mode == GameManager.MODE_RACE and lap_number >= GameManager.RACE_LAPS and state == State.RACING:
+	if mode == GameManager.MODE_RACE and lap_number >= GameManager.race_laps and state == State.RACING:
 		_finish_count += 1
-		player_timer.finish_time = race_time
+		if _stop_still_required():
+			race_penalty += 25.0
+			EventBus.driver_message.emit("NO PIT STOP  -  +25 s PENALTY", Color("ff5d5d"))
+		player_timer.finish_time = race_time + race_penalty
 		_session["finished"] = true
+		_session["stops"] = _stops
+		_session["penalty"] = race_penalty
 		state = State.FINISHED
 		_finish_timer = FINISH_DELAY
 		player.controls_enabled = false
@@ -523,7 +809,9 @@ func _on_player_lap(lap_time: float, valid: bool, lap_number: int) -> void:
 
 
 func _on_ai_lap(_lap_time: float, _valid: bool, lap_number: int, index: int) -> void:
-	if mode == GameManager.MODE_RACE and lap_number >= GameManager.RACE_LAPS and timers[index].finish_time < 0.0:
+	if index < _ai_pit_lap.size() and lap_number == int(_ai_pit_lap[index]) and lap_number < GameManager.race_laps:
+		drivers[index - 1].start_pit(randf_range(2.3, 3.4))
+	if mode == GameManager.MODE_RACE and lap_number >= GameManager.race_laps and timers[index].finish_time < 0.0:
 		_finish_count += 1
 		timers[index].finish_time = race_time
 
@@ -531,7 +819,7 @@ func _on_ai_lap(_lap_time: float, _valid: bool, lap_number: int, index: int) -> 
 # ---------------------------------------------------------------- actions
 
 func reset_player() -> void:
-	if state != State.RACING or player == null or player.is_destroyed:
+	if state != State.RACING or player == null or player.is_destroyed or pit_phase != "":
 		return
 	_recover_car(player)
 	if player_timer.started:
@@ -583,6 +871,11 @@ func _end_session(next_scene: String) -> void:
 	_leaving = true
 	get_tree().paused = false
 	positions.update(cars, timers, track.length)
+	if GameManager.career_race.has("quali"):
+		# Qualifying goes straight back to race day with the new grid.
+		GameManager.career_race = {}
+		SceneManager.goto("raceday")
+		return
 	var was_career := not GameManager.career_race.is_empty()
 	GameManager.last_results = RaceResults.build(mode, player_timer, positions.position_of(player), cars.size(), _classification(), telemetry, track, _session)
 	# A career race always goes through the results screen so the outcome is shown.

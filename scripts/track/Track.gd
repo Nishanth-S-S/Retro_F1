@@ -21,6 +21,9 @@ const BARRIER_THICKNESS := 1.3
 @export_file("*.json") var track_file := "res://data/tracks/falcon_ridge.json"
 
 var data: TrackData
+## Where the grandstands and the floodlights are (pixels): crowd noise and night lighting.
+var stand_positions := PackedVector2Array()
+var lamp_positions := PackedVector2Array()
 var _st: SurfaceTool
 var _scenery: TrackScenery
 var _mesh_instance: MeshInstance2D
@@ -92,6 +95,18 @@ func _build_mesh() -> void:
 	# Asphalt: two alternating tones every few samples give the surface a readable flow at speed.
 	for i in n:
 		_strip_segment(i, -hw, hw, COLOR_ASPHALT if (i / 3) % 2 == 0 else COLOR_ASPHALT_ALT)
+	# Painted run-off beyond the curbs where there is no gravel, striped like a modern track.
+	for i in n:
+		for side: float in [-1.0, 1.0]:
+			var curb := data.curb_right[i] if side > 0.0 else data.curb_left[i]
+			var trap := data.gravel_right[i] if side > 0.0 else data.gravel_left[i]
+			if curb == 1 and trap == 0:
+				var inner := hw + data.curb_width
+				var color := Color("3a3d45") if (i / 2) % 3 != 0 else (Color("2f5fae") if side > 0.0 else Color("b8312c"))
+				if side > 0.0:
+					_strip_segment(i, inner, inner + 5.0, color)
+				else:
+					_strip_segment(i, -inner - 5.0, -inner, color)
 	# Curbs.
 	for i in n:
 		var curb_color := COLOR_CURB_RED if i % 2 == 0 else COLOR_CURB_WHITE
@@ -214,7 +229,7 @@ func _build_scenery() -> void:
 					_rect(pos + data.tangents[j] * 0.3 * PPM + data.normals[j] * (b - (2 - k) * 0.5) * 0.6 * PPM, Vector2(0.1, 0.18) * PPM, data.tangents[j].angle(), Color(0.1, 0.1, 0.1))
 	# Grandstands along the start straight (behind the pit garages), and on race day in the
 	# career a few more at the big corners - all of them full.
-	var crowd := not GameManager.career_race.is_empty()
+	var crowd := true
 	var stands: Array = []
 	for i in range(-40, 80, 20):
 		stands.append([data.wrap_index(i), -1.0])
@@ -233,6 +248,7 @@ func _build_scenery() -> void:
 		var ang := data.tangents[j].angle()
 		_rect(pos + Vector2(4, 5), Vector2(34, 7.5) * PPM, ang, Color(0, 0, 0, 0.22))
 		_rect(pos, Vector2(34, 7.5) * PPM, ang, Color("58616e"))
+		stand_positions.append(pos)
 		for k in 5:
 			_scenery.reserve(pos + data.tangents[j] * (k - 2) * 15.0 * PPM, 10.0)
 		if crowd:
@@ -240,8 +256,31 @@ func _build_scenery() -> void:
 		else:
 			for row in 5:
 				_rect(pos + data.normals[j] * (row - 2) * 2.6 * PPM, Vector2(33, 0.8) * PPM, ang, [Color("d95050"), Color("e8e8e8"), Color("3a78c2"), Color("e8e8e8"), Color("f5c542")][row])
+	_floodlights()
+	_scenery.details()
 	# Buildings, vegetation, rocks, boats and landmarks for this location.
 	_scenery.objects()
+
+
+## Light towers all the way round, alternating sides just behind the barriers. At night
+## RaceManager lights them up; by day they are just poles with lamp heads.
+func _floodlights() -> void:
+	var step := int(95.0 / data.spacing)
+	var k := 0
+	for i in range(step / 2, data.count, step):
+		k += 1
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var offset := (data.barrier_right[i] if side > 0.0 else data.barrier_left[i]) + 3.2
+		var pos := data.points[i] + data.normals[i] * side * offset * PPM
+		var ang := data.tangents[i].angle()
+		_rect(pos + Vector2(6, 9), Vector2(0.9, 2.8) * PPM, ang, Color(0, 0, 0, 0.25))
+		_rect(pos, Vector2(0.5, 0.5) * PPM, ang, Color("3a3d44"))
+		# Lamp head leaning over the track.
+		var head := pos - data.normals[i] * side * 1.4 * PPM
+		_rect(head, Vector2(1.6, 0.6) * PPM, ang, Color("23262e"))
+		_rect(head, Vector2(1.3, 0.35) * PPM, ang, Color("fff3b0"))
+		lamp_positions.append(head - data.normals[i] * side * 5.0 * PPM)
+		_scenery.reserve(pos, 4.0)
 
 
 func _build_barriers() -> void:

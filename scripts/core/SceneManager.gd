@@ -8,7 +8,6 @@ const SCENES := {
 	"results": "res://scenes/Results.tscn",
 	"career": "res://scenes/career/CareerHub.tscn",
 	"career_start": "res://scenes/career/CareerStart.tscn",
-	"pitwall": "res://scenes/career/PitWall.tscn",
 	"raceday": "res://scenes/career/RaceDay.tscn",
 	"saves": "res://scenes/Saves.tscn",
 }

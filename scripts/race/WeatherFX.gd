@@ -15,8 +15,18 @@ var _flash := 0.0
 var _flash_timer := 6.0
 
 
+## Grip on a track for slicks (0), intermediates (1) and full wets (2) in [dry, light, heavy].
+const TIRE_GRIP := [[1.0, 0.84, 0.7], [0.9, 0.97, 0.86], [0.8, 0.92, 0.97]]
+
+
 static func grip(weather: int) -> float:
 	return GRIP[clampi(weather, 0, 2)]
+
+
+static func tire_grip(weather: int, setup: CarSetup) -> float:
+	var tires := setup.part("tires")
+	var kind := clampi(int(tires.stat("wet", 0.0)) if tires else 0, 0, 2)
+	return float(TIRE_GRIP[kind][clampi(weather, 0, 2)])
 
 
 func _ready() -> void:

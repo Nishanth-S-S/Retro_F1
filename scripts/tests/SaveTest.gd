@@ -21,10 +21,10 @@ func _ready() -> void:
 	_check(PartDB.all_ids().size() >= 20, "%d parts defined (>= 20)" % PartDB.all_ids().size())
 	# Economy rules.
 	_check(not GameManager.buy_part("engine_turbo_6"), "R&D-locked part cannot be bought")
-	_check(not GameManager.is_unlocked("tires_medium"), "medium tires start locked")
+	_check(GameManager.is_unlocked("tires_medium") and not GameManager.is_unlocked("tires_super"), "medium tires open from the start, super softs locked")
 	Career.new_career("wil", {"name": "TEST", "look": PixelArt.default_look()})
 	_check(Career.active() and GameManager.money() == 40000 and Career.lineup().size() == 2, "new career sets team budget and two drivers")
-	_check(Career.upgrade("rd") == "" and GameManager.is_unlocked("tires_medium"), "R&D level 1 unlocks parts")
+	_check(Career.upgrade("rd") == "" and GameManager.is_unlocked("tires_super"), "R&D level 1 unlocks parts")
 	_check(int(Career.state()["cap_spent"]) == 2000, "factory spending counts against the cost cap")
 	GameManager.profile["story_progress"] = 6
 	_check(GameManager.buy_part("chassis_lightweight"), "unlocked part can be bought")

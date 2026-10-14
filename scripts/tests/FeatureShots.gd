@@ -58,6 +58,13 @@ func _ui() -> void:
 	await _shot("b_drivers")
 	HubPanels.driver_card(hub, Career.lineup()[0])
 	await _shot("c_driver_card")
+	HubPanels.manager_card(hub)
+	await _shot("c_manager_card")
+	hub.call("_close_modal")
+	Career.state()["season_review"] = {"season": 1, "position": 4, "payout": 20000, "champion": "Maks Verstoppen", "team_champion": "Red Bison Racing", "contract": "renew"}
+	HubPanels.season_review(hub)
+	await _shot("c_season_review")
+	Career.state()["season_review"] = {}
 	hub.call("_close_modal")
 	Career.state()["board"] = 30
 	Career._queue_event({}, [{"id": Career.lineup()[0], "position": 12, "dnf": false, "points": 0}, {"id": Career.lineup()[1], "position": 14, "dnf": false, "points": 0}])
@@ -142,9 +149,10 @@ func _tracks() -> void:
 
 func _race() -> void:
 	Career.end_career()
-	GameManager.track_id = "port_azure"
+	GameManager.track_id = "interlagos"
 	GameManager.session_mode = GameManager.MODE_RACE
-	GameManager.session_weather = 2
+	GameManager.session_weather = 0
+	GameManager.session_night = false
 	var race := (load("res://scenes/Race.tscn") as PackedScene).instantiate() as RaceManager
 	get_tree().root.add_child(race)
 	race.player.is_player = false
@@ -153,4 +161,14 @@ func _race() -> void:
 	driver.setup(race.player, race.line, {"pace": 0.95, "error_rate": 0.0, "track_grip": WeatherFX.grip(2)}, 3)
 	driver.others = race.cars
 	await _shot("v_race_wet", 9.0)
+	# A pit stop: hand the car back and roll it into the lane.
+	driver.queue_free()
+	await get_tree().physics_frame
+	race.player.is_player = true
+	race.player.damage = 55.0
+	var lane := -(race.track.half_width + TrackData.PIT_WIDTH * 0.55)
+	race.player.place(race.track.position_at(race.track.pit_start + 15.0, lane), race.track.heading_at(race.track.pit_start + 15.0))
+	while race.pit_phase != "service":
+		await get_tree().process_frame
+	await _shot("w_pit_stop", 1.2)
 	race.queue_free()

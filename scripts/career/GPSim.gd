@@ -56,6 +56,16 @@ func setup(entries: Array, round_info: Dictionary, pit_level: int, seed_value: i
 	# Qualifying: one flying lap each.
 	for car in cars:
 		car["quali"] = _pace(car) + _rng.randfn(0.0, 0.25)
+	regrid()
+
+
+## A driver's qualifying time with no luck either way (used when the player qualifies).
+func base_quali(car: Dictionary) -> float:
+	return _pace(car)
+
+
+## Sorts the field by qualifying time and lines it up on the grid.
+func regrid() -> void:
 	cars.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["quali"] < b["quali"])
 	for i in cars.size():
 		# Grid slot, plus or minus the launch off the line.

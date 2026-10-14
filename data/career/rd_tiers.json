@@ -3,52 +3,46 @@
   "level": 1,
   "cost": 2000,
   "unlocks": [
-   "ballast_10",
-   "ballast_20",
-   "ballast_30",
-   "tires_medium",
-   "suspension_soft",
-   "suspension_stiff"
+   "tires_super",
+   "tires_wet",
+   "brakes_lightweight",
+   "gearbox_close_ratio",
+   "gearbox_long_ratio"
   ]
  },
  {
   "level": 2,
   "cost": 3500,
   "unlocks": [
-   "front_wing_low_drag",
-   "front_wing_high_df",
-   "rear_wing_low_drag",
-   "rear_wing_high_df"
+   "tires_ultra",
+   "engine_balanced_6",
+   "chassis_durable"
   ]
  },
  {
   "level": 3,
   "cost": 5000,
   "unlocks": [
-   "engine_balanced_6",
-   "gearbox_close_ratio",
-   "gearbox_long_ratio",
-   "brakes_lightweight"
+   "tires_hyper",
+   "brakes_racing",
+   "front_wing_cascade",
+   "rear_wing_twin_plane"
   ]
  },
  {
   "level": 4,
   "cost": 7000,
   "unlocks": [
-   "tires_soft",
-   "chassis_durable",
-   "brakes_racing"
+   "engine_turbo_6",
+   "engine_high_output_8",
+   "tires_qualifier"
   ]
  },
  {
   "level": 5,
   "cost": 9500,
   "unlocks": [
-   "engine_turbo_6",
-   "engine_high_output_8",
-   "gearbox_seamless",
-   "front_wing_cascade",
-   "rear_wing_twin_plane"
+   "gearbox_seamless"
   ]
  },
  {

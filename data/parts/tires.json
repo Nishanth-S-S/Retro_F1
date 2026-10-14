@@ -1,8 +1,189 @@
 [
-  {"id": "tires_hard", "display_name": "Hard", "description": "Lower peak grip, but barely wears and tolerates a wide temperature range.", "price": 0, "research_cost": 0, "mass": 40,
-   "stats": {"base_grip": 1.42, "wear_rate": 0.35, "optimal_temperature": 92, "temperature_window": 22, "rolling_resistance": 0.011, "heat_rate": 0.9}},
-  {"id": "tires_medium", "display_name": "Medium", "description": "A balance of grip and life.", "price": 2500, "research_cost": 0, "mass": 40,
-   "stats": {"base_grip": 1.55, "wear_rate": 1.0, "optimal_temperature": 92, "temperature_window": 16, "rolling_resistance": 0.012, "heat_rate": 1.0}},
-  {"id": "tires_soft", "display_name": "Soft", "description": "Maximum grip while it lasts. Wears quickly and overheats if you slide it.", "price": 4000, "research_cost": 0, "mass": 40,
-   "stats": {"base_grip": 1.68, "wear_rate": 1.9, "optimal_temperature": 90, "temperature_window": 11, "rolling_resistance": 0.014, "heat_rate": 1.15}}
+ {
+  "id": "tires_vintage",
+  "display_name": "Vintage Bias-Ply",
+  "description": "Old-school cross-ply rubber. Slow, forgiving and almost indestructible.",
+  "price": 800,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.3,
+   "wear_rate": 0.5,
+   "optimal_temperature": 88,
+   "temperature_window": 30,
+   "rolling_resistance": 0.01,
+   "heat_rate": 0.8,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_endurance",
+  "display_name": "Endurance",
+  "description": "Built to run all day. Low grip, barely wears.",
+  "price": 1500,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.36,
+   "wear_rate": 0.15,
+   "optimal_temperature": 95,
+   "temperature_window": 26,
+   "rolling_resistance": 0.01,
+   "heat_rate": 0.85,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_hard",
+  "display_name": "Hard",
+  "description": "Lower peak grip, but barely wears and tolerates a wide temperature range.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.42,
+   "wear_rate": 0.35,
+   "optimal_temperature": 92,
+   "temperature_window": 22,
+   "rolling_resistance": 0.011,
+   "heat_rate": 0.9,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_medium",
+  "display_name": "Medium",
+  "description": "A balance of grip and life.",
+  "price": 2500,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.55,
+   "wear_rate": 1.0,
+   "optimal_temperature": 92,
+   "temperature_window": 16,
+   "rolling_resistance": 0.012,
+   "heat_rate": 1.0,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_soft",
+  "display_name": "Soft",
+  "description": "Maximum grip while it lasts. Wears quickly and overheats if you slide it.",
+  "price": 4000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.68,
+   "wear_rate": 1.9,
+   "optimal_temperature": 90,
+   "temperature_window": 11,
+   "rolling_resistance": 0.014,
+   "heat_rate": 1.15,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_super",
+  "display_name": "Super Soft",
+  "description": "Grippier than the soft, gone even sooner.",
+  "price": 4500,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.71,
+   "wear_rate": 2.2,
+   "optimal_temperature": 90,
+   "temperature_window": 10,
+   "rolling_resistance": 0.014,
+   "heat_rate": 1.18,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_ultra",
+  "display_name": "Ultra Soft",
+  "description": "Very sticky, very short-lived. A tyre for short races.",
+  "price": 5000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.75,
+   "wear_rate": 2.6,
+   "optimal_temperature": 89,
+   "temperature_window": 9,
+   "rolling_resistance": 0.0145,
+   "heat_rate": 1.2,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_hyper",
+  "display_name": "Hyper Soft",
+  "description": "Lap-record rubber. Lasts a handful of laps.",
+  "price": 6000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.8,
+   "wear_rate": 3.3,
+   "optimal_temperature": 88,
+   "temperature_window": 8,
+   "rolling_resistance": 0.015,
+   "heat_rate": 1.25,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_qualifier",
+  "display_name": "Qualifier",
+  "description": "One perfect lap, then nothing. Overheats if you so much as slide.",
+  "price": 8000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.86,
+   "wear_rate": 5.0,
+   "optimal_temperature": 86,
+   "temperature_window": 6,
+   "rolling_resistance": 0.015,
+   "heat_rate": 1.35,
+   "wet": 0
+  }
+ },
+ {
+  "id": "tires_inter",
+  "display_name": "Intermediate",
+  "description": "Grooved for a damp track. Strong in light rain, slow and hot in the dry.",
+  "price": 2000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.4,
+   "wear_rate": 0.9,
+   "optimal_temperature": 80,
+   "temperature_window": 18,
+   "rolling_resistance": 0.013,
+   "heat_rate": 1.0,
+   "wet": 1
+  }
+ },
+ {
+  "id": "tires_wet",
+  "display_name": "Full Wet",
+  "description": "Deep grooves that clear standing water. King in heavy rain, useless in the dry.",
+  "price": 3000,
+  "research_cost": 0,
+  "mass": 40,
+  "stats": {
+   "base_grip": 1.3,
+   "wear_rate": 0.8,
+   "optimal_temperature": 75,
+   "temperature_window": 20,
+   "rolling_resistance": 0.014,
+   "heat_rate": 1.0,
+   "wet": 2
+  }
+ }
 ]

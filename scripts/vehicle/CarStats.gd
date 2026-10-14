@@ -107,9 +107,12 @@ func _aero(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 		front_downforce_area *= front_susp.stat("aero_platform", 1.0)
 	if rear_susp:
 		rear_downforce_area *= rear_susp.stat("aero_platform", 1.0)
-	front_downforce_area *= config.downforce_multiplier
-	rear_downforce_area *= config.downforce_multiplier
-	drag_area *= config.drag_multiplier
+	# Body set and ride height: a lower car seals the floor for more downforce.
+	var body: Dictionary = CarSetup.BODY_SETS[setup.body]
+	var low := (5.0 - setup.ride_height) * 0.025
+	front_downforce_area *= config.downforce_multiplier * float(body["downforce"]) * (1.0 + low)
+	rear_downforce_area *= config.downforce_multiplier * float(body["downforce"]) * (1.0 + low)
+	drag_area *= config.drag_multiplier * float(body["drag"]) * (1.0 + low * 0.25)
 	front_aero = front_downforce_area / maxf(front_downforce_area + rear_downforce_area, 0.001)
 	var q := 0.5 * config.air_density * 55.56 * 55.56
 	downforce_200 = q * (front_downforce_area + rear_downforce_area)
@@ -127,7 +130,13 @@ func _chassis_and_grip(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 	rear_response = (rear_susp.stat("response_modifier", 1.0) if rear_susp else 1.0) * rigidity
 	front_curb = front_susp.stat("curb_compliance", 0.5) if front_susp else 0.5
 	rear_curb = rear_susp.stat("curb_compliance", 0.5) if rear_susp else 0.5
-	tire_grip = (tires.stat("base_grip", 1.45) if tires else 1.0) * config.tire_grip_multiplier
+	# A slammed car crashes over curbs; a high one rides them.
+	front_curb = clampf(front_curb + (setup.ride_height - 5) * 0.04, 0.05, 1.0)
+	rear_curb = clampf(rear_curb + (setup.ride_height - 5) * 0.04, 0.05, 1.0)
+	# Anti-roll bars move grip between the axles: stiff front = understeer.
+	front_mech_grip *= 1.0 - setup.anti_roll * 0.012
+	rear_mech_grip *= 1.0 + setup.anti_roll * 0.012
+	tire_grip = (tires.stat("base_grip", 1.45) if tires else 1.0) * config.tire_grip_multiplier * pressure_grip(setup.tyre_pressure)
 	var caps_low := _axle_capability(LOW_SPEED_REF, config)
 	var caps_high := _axle_capability(HIGH_SPEED_REF, config)
 	mech_grip_g = _axle_grip_g(0.0, config)
@@ -151,6 +160,10 @@ func _axle_capability(speed: float, config: VehiclePhysicsConfig) -> Vector2:
 func _axle_grip_g(speed: float, config: VehiclePhysicsConfig) -> float:
 	var caps := _axle_capability(speed, config)
 	return minf(caps.x, caps.y) / VehiclePhysicsConfig.GRAVITY
+
+
+static func pressure_grip(pressure: int) -> float:
+	return 1.0 - (pressure - 5) * 0.008
 
 
 static func balance_label_for(index: float) -> String:

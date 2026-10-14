@@ -29,7 +29,7 @@ func _ready() -> void:
 		Career._injure(Career.driver(hurt), 2, "test")
 		var racing := Career.race_lineup()
 		print("injured %s -> racing %s" % [Career.driver(hurt)["name"], [Career.driver(racing[0])["name"], Career.driver(racing[1])["name"]]])
-		if racing.has(hurt) or not Career.reserves().has(racing[0]) or Career.reserves().size() != 2:
+		if racing.has(hurt) or not Career.reserves().has(racing[0]) or Career.reserves().size() != 3:
 			failures += 1
 			print("FAIL: injury cover")
 		var races := 0

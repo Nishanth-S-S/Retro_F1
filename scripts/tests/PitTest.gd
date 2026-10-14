@@ -22,19 +22,30 @@ func _ready() -> void:
 	var burned := 100.0 - race.player.fuel
 	print("fuel after 1 racing lap: %.1f%% left (burned %.1f%%)" % [race.player.fuel, burned])
 	var ok := burned > 8.0 and burned < 30.0
-	# Park a damaged, half-empty car in the service box.
+	# Hand back to the "player" and roll a damaged, half-empty car into the pit lane.
 	driver.queue_free()
+	await get_tree().physics_frame
+	race.player.is_player = true
 	var track := race.track
-	race.player.place(track.position_at(track.pit_box, -(track.half_width + 4.0)), track.heading_at(track.pit_box))
+	var lane := -(track.half_width + TrackData.PIT_WIDTH * 0.55)
+	race.player.place(track.position_at(track.pit_start + 15.0, lane), track.heading_at(track.pit_start + 15.0))
 	race.player.damage = 50.0
 	race.player.fuel = 40.0
-	await get_tree().create_timer(0.5).timeout
-	var stop := race.pit_timer
-	print("pit stop started: %.1f s remaining, surface %d, off-track %s" % [stop, race.player.surface_front, race.player.off_track])
-	ok = ok and stop > 5.0 and not race.player.off_track and race.player.surface_front == VehiclePhysicsConfig.Surface.ASPHALT
-	while race.pit_timer > 0.0:
-		await get_tree().create_timer(0.5).timeout
-	print("after stop: damage %.0f fuel %.0f controls %s" % [race.player.damage, race.player.fuel, race.player.controls_enabled])
-	ok = ok and race.player.damage == 0.0 and race.player.fuel == 100.0 and race.player.controls_enabled
+	var tyres_before: String = race.player.setup.parts["tires"]
+	var phases := PackedStringArray()
+	var stop := 0.0
+	var waited := 0.0
+	while waited < 40.0:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+		if phases.is_empty() or phases[phases.size() - 1] != race.pit_phase:
+			phases.append(race.pit_phase if race.pit_phase != "" else "racing")
+		stop = maxf(stop, race._pit_total)
+		if phases.size() > 2 and race.pit_phase == "":
+			break
+	print("pit phases: %s  stop %.1f s  tyres %s -> %s" % [" > ".join(phases), stop, tyres_before, race.player.setup.parts["tires"]])
+	print("after stop: damage %.0f fuel %.0f autopilot %s required now %s" % [race.player.damage, race.player.fuel, race.player.autopilot, race._stop_still_required()])
+	ok = ok and " > ".join(phases).contains("in > service > out") and race.player.damage < 20.0 and race.player.fuel > 98.0 and not race.player.autopilot
+	ok = ok and race.player.setup.parts["tires"] != tyres_before and not race._stop_still_required() and stop > 1.5
 	print("PIT TEST PASSED" if ok else "PIT TEST FAILED")
 	get_tree().quit(0 if ok else 1)

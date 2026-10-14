@@ -93,6 +93,7 @@ func _build_streams() -> void:
 	streams["finish"] = _make_arpeggio([523.0, 659.0, 784.0, 1046.0], 0.13, 0.5)
 	streams["cash"] = _make_arpeggio([784.0, 1046.0], 0.09, 0.4)
 	streams["music"] = _make_music()
+	streams["crowd"] = _make_crowd()
 
 
 func _wav(samples: PackedFloat32Array, loop: bool, rate: int = MIX_RATE) -> AudioStreamWAV:
@@ -110,6 +111,30 @@ func _wav(samples: PackedFloat32Array, loop: bool, rate: int = MIX_RATE) -> Audi
 		wav.loop_begin = 0
 		wav.loop_end = samples.size()
 	return wav
+
+
+## Crowd loop: a wash of voices (band-passed noise) that swells and cheers. The ends are
+## faded into each other so the loop never clicks.
+func _make_crowd() -> AudioStreamWAV:
+	var count := MIX_RATE * 4
+	var samples := PackedFloat32Array()
+	samples.resize(count)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var low := 0.0
+	var band := 0.0
+	for i in count:
+		var t := float(i) / MIX_RATE
+		low += (rng.randf_range(-1.0, 1.0) - low) * 0.18
+		band += (low - band) * 0.05
+		var swell := 0.55 + 0.25 * sin(TAU * 0.5 * t) + 0.2 * sin(TAU * 1.3 * t + 1.0)
+		var cheer := 0.35 * maxf(0.0, sin(TAU * 0.25 * t + 0.6)) * (0.5 + 0.5 * sin(TAU * 7.0 * t))
+		samples[i] = (low - band) * 2.2 * (swell + cheer)
+	var fade := MIX_RATE / 2
+	for i in fade:
+		var k := float(i) / fade
+		samples[i] = samples[i] * k + samples[count - fade + i] * (1.0 - k)
+	return _wav(samples.slice(0, count - fade), true)
 
 
 ## Engine loop: a 50 Hz buzz rich in harmonics. Pitch-shifted with RPM at playback time.

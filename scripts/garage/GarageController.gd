@@ -5,7 +5,8 @@ extends Control
 
 const PANEL_WIDTH := 410.0
 ## Which tuning slider belongs to which hardpoint.
-const SLOT_SLIDERS := {"front_wing": "FRONT WING ANGLE", "rear_wing": "REAR WING ANGLE", "brakes": "BRAKE BIAS", "ballast": "BALLAST POSITION"}
+const SLOT_SLIDERS := {"front_wing": ["FRONT WING ANGLE"], "rear_wing": ["REAR WING ANGLE"], "brakes": ["BRAKE BIAS"], "ballast": ["BALLAST POSITION"],
+	"chassis": ["RIDE HEIGHT", "BODY SET"], "tires": ["TYRE PRESSURE"], "front_suspension": ["ANTI-ROLL BALANCE"], "rear_suspension": ["ANTI-ROLL BALANCE"]}
 
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _stats: CarStats
@@ -67,7 +68,7 @@ func _ready() -> void:
 	add_child(_workshop)
 	EventBus.setup_changed.connect(_refresh_all)
 	EventBus.inventory_changed.connect(_refresh_all)
-	EventBus.money_changed.connect(func(_amount: int) -> void: _money_label.text = UIKit.money(GameManager.money()))
+	EventBus.money_changed.connect(func(_amount: int) -> void: _refresh_all())
 	_show_picker("")
 	_refresh_all()
 
@@ -118,9 +119,9 @@ func _build_top_bar() -> void:
 	tunnel.pressed.connect(func() -> void: _tunnel.open())
 	row.add_child(tunnel)
 	var cash := UIKit.panel(UIKit.PANEL, UIKit.LINE)
-	cash.custom_minimum_size = Vector2(150, 58)
+	cash.custom_minimum_size = Vector2(190 if Career.active() else 150, 58)
 	row.add_child(cash)
-	_money_label = UIKit.label(UIKit.money(GameManager.money()), 20, UIKit.GOOD)
+	_money_label = UIKit.label(UIKit.money(GameManager.money()), 15 if Career.active() else 20, UIKit.GOOD)
 	_money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_money_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	cash.add_child(_money_label)
@@ -174,6 +175,10 @@ func _build_side_panel() -> void:
 	_add_slider(_picker, "REAR WING ANGLE", CarSetup.WING_ANGLE_MIN, CarSetup.WING_ANGLE_MAX, 1.0, func(v: float) -> void: GameManager.setup.rear_wing_angle = int(v))
 	_add_slider(_picker, "BRAKE BIAS", 0.48, 0.66, 0.01, func(v: float) -> void: GameManager.setup.brake_bias = v)
 	_add_slider(_picker, "BALLAST POSITION", 0.0, 1.0, 1.0 / (CarSetup.BALLAST_STEPS - 1), func(v: float) -> void: GameManager.setup.ballast_position = v)
+	_add_slider(_picker, "RIDE HEIGHT", 1, 10, 1.0, func(v: float) -> void: GameManager.setup.ride_height = int(v))
+	_add_slider(_picker, "TYRE PRESSURE", 1, 10, 1.0, func(v: float) -> void: GameManager.setup.tyre_pressure = int(v))
+	_add_slider(_picker, "ANTI-ROLL BALANCE", -5, 5, 1.0, func(v: float) -> void: GameManager.setup.anti_roll = int(v))
+	_add_body_picker(_picker)
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -250,6 +255,33 @@ func _build_details() -> void:
 	_details.add_child(close)
 
 
+## Bodywork choice for the chassis: a grid of body sets.
+func _add_body_picker(parent: Control) -> void:
+	var cell := VBoxContainer.new()
+	cell.add_theme_constant_override("separation", 4)
+	parent.add_child(cell)
+	cell.add_child(UIKit.label("BODY SET", 13, UIKit.TEXT_DIM))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	cell.add_child(grid)
+	for id: String in CarSetup.BODY_SETS:
+		var b := UIKit.button(str(CarSetup.BODY_SETS[id]["name"]), 11)
+		b.toggle_mode = true
+		b.set_meta("body", id)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0, 40)
+		b.pressed.connect(func() -> void:
+			GameManager.setup.body = id
+			EventBus.setup_changed.emit()
+			GameManager.save())
+		grid.add_child(b)
+	_sliders["BODY SET"] = HSlider.new()      # placeholder so the refresh loop finds the term
+	_slider_values["BODY SET"] = Label.new()
+	_slider_cells["BODY SET"] = cell
+
+
 func _add_slider(parent: Control, term: String, min_value: float, max_value: float, step: float, apply: Callable) -> void:
 	var cell := VBoxContainer.new()
 	cell.add_theme_constant_override("separation", -2)
@@ -295,6 +327,9 @@ func _refresh_all() -> void:
 	_workspace.refresh(_stats)
 	_stats_panel.refresh(_stats, setup)
 	_money_label.text = UIKit.money(GameManager.money())
+	if Career.active():
+		# Research points and the R&D level that unlocks parts, always in view.
+		_money_label.text = "%s\n%d RP  ·  R&D %d" % [UIKit.money(GameManager.money()), int(Career.state()["rp"]), Career.rd_level()]
 	var g := VehiclePhysicsConfig.GRAVITY
 	(_bars["TOP SPEED"] as StatBar).set_value(inverse_lerp(200.0, 310.0, _stats.top_speed * 3.6), "%d km/h" % int(_stats.top_speed * 3.6))
 	(_bars["ACCELERATION"] as StatBar).set_value(inverse_lerp(250.0, 560.0, _stats.power_to_weight), "%d kW/t" % int(_stats.power_to_weight))
@@ -328,6 +363,18 @@ func _refresh_all() -> void:
 			"BRAKE BIAS":
 				slider.set_value_no_signal(setup.brake_bias)
 				value.text = "%d%% front" % int(round(setup.brake_bias * 100.0))
+			"RIDE HEIGHT":
+				slider.set_value_no_signal(setup.ride_height)
+				value.text = "%d  %s" % [setup.ride_height, "LOW" if setup.ride_height <= 3 else ("HIGH" if setup.ride_height >= 8 else "MID")]
+			"TYRE PRESSURE":
+				slider.set_value_no_signal(setup.tyre_pressure)
+				value.text = "%d  %s" % [setup.tyre_pressure, "SOFT" if setup.tyre_pressure <= 3 else ("HARD" if setup.tyre_pressure >= 8 else "MID")]
+			"ANTI-ROLL BALANCE":
+				slider.set_value_no_signal(setup.anti_roll)
+				value.text = "%+d  %s" % [setup.anti_roll, "STIFF FRONT" if setup.anti_roll > 0 else ("STIFF REAR" if setup.anti_roll < 0 else "EVEN")]
+			"BODY SET":
+				for b: Button in (_slider_cells[term] as Control).find_children("*", "Button", true, false):
+					b.button_pressed = str(b.get_meta("body")) == setup.body
 			"BALLAST POSITION":
 				var ballast := setup.part("ballast")
 				var has_ballast := ballast != null and ballast.mass > 0.0
@@ -365,7 +412,7 @@ func _show_picker(slot: String) -> void:
 		return
 	_picker_title.text = (CarSetup.SLOT_LABELS[slot] as String).to_upper()
 	for term: String in _slider_cells:
-		(_slider_cells[term] as Control).visible = SLOT_SLIDERS.get(slot, "") == term
+		(_slider_cells[term] as Control).visible = (SLOT_SLIDERS.get(slot, []) as Array).has(term)
 	_rebuild_list()
 	_refresh_detail()
 

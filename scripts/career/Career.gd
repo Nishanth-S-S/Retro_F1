@@ -8,7 +8,7 @@ const COST_CAP := 70000              # $k per season of car spending (parts + fa
 const FACTORY_MAX := 5
 ## Price of each of the three scouting phases ($k). The last one reveals true potential.
 const SCOUT_COSTS: PackedInt32Array = [400, 700, 1200]
-const MAX_RESERVES := 2
+const MAX_RESERVES := 3
 ## Share of a reserve driver's salary that is paid and counts against the cap.
 const RESERVE_SALARY_SHARE := 0.3
 const DEPARTMENTS := {
@@ -18,6 +18,7 @@ const DEPARTMENTS := {
 	"rd": {"name": "R&D LAB", "note": "unlocks new parts in the garage"},
 }
 const POINTS: PackedInt32Array = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+const SPRINT_POINTS: PackedInt32Array = [8, 7, 6, 5, 4, 3, 2, 1]
 const SEASON_PRIZE: PackedInt32Array = [30000, 26000, 23000, 20000, 17000, 15000, 13000, 11000, 9000, 8000, 7000]
 const MAX_CARS := 4
 const NEW_CAR_COST := 2500           # $k to build another chassis (counts against the cost cap)
@@ -41,10 +42,17 @@ const MATERIAL_AREAS := {
 	"brakes": {"name": "BRAKES", "spec": "chassis", "tiers": ["STEEL DISCS", "VENTED STEEL", "CARBON-CERAMIC", "CARBON-CARBON", "CARBON-SILICON"]},
 	"suspension": {"name": "SUSPENSION", "spec": "chassis", "tiers": ["STEEL ARMS", "CHROMOLY", "TITANIUM", "CARBON WISHBONES", "METAL MATRIX"]},
 }
-const TRACK_TYPES := {"falcon_ridge": "TECHNICAL", "tempo_park": "HIGH SPEED", "port_azure": "STREET", "silver_lake": "FAST SWEEPS", "nordhaven": "FOREST ROAD"}
+const TRACK_TYPES := {"monza": "HIGH SPEED", "silverstone": "FAST SWEEPS", "spa": "FOREST ROAD", "interlagos": "TECHNICAL", "spielberg": "HIGH SPEED",
+	"falcon_ridge": "TECHNICAL", "tempo_park": "HIGH SPEED", "port_azure": "STREET", "silver_lake": "FAST SWEEPS", "nordhaven": "FOREST ROAD"}
 ## Seconds per lap a driver gains at home, on a favourite kind of track, or loses on a bogey one.
 const HOME_GAIN := 0.25
 const TYPE_GAIN := 0.15
+## Driver training: how hard each driver is pushed between races.
+const TRAINING_NAMES: PackedStringArray = ["REST", "NORMAL", "INTENSE", "EXTREME"]
+const TRAINING_GAIN: PackedFloat32Array = [0.4, 1.0, 1.6, 2.2]
+const TRAINING_FITNESS: PackedInt32Array = [12, 2, -9, -16]
+const TRAINING_MORALE: PackedInt32Array = [2, 0, -2, -5]
+const SIMULATOR_COST := 150          # $k per race for a driver's simulator programme
 const BALANCE_NAMES: PackedStringArray = ["A PLANTED, UNDERSTEERY CAR", "A NEUTRAL CAR", "A POINTY, OVERSTEERY CAR"]
 const AERO_NAMES: PackedStringArray = ["LOW DRAG / TOP SPEED", "A BALANCED WING LEVEL", "HIGH DOWNFORCE"]
 const FIRST_NAMES: PackedStringArray = ["Teo", "Arlo", "Niko", "Juno", "Rafa", "Emil", "Kai", "Luca", "Mika", "Dario", "Yuki", "Sami", "Otto", "Remy", "Zane", "Ines", "Mara", "Tavi"]
@@ -176,6 +184,7 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 	_generate_people()
 	_add_starting_reserve()
 	_init_team_extras()
+	manager_contract()
 	_refresh_sponsor_offers()
 	_sync_unlocks()
 	add_message("owner", "Welcome aboard. The target is simple: %s. Don't make me regret this." % board_target_text().to_lower())
@@ -674,6 +683,28 @@ func round_track() -> String:
 	return str(next_round().get("track", "falcon_ridge"))
 
 
+## Points for a round: sprints pay the top eight 8-1, the finale pays double.
+func points_table(round_info: Dictionary) -> PackedInt32Array:
+	var table := SPRINT_POINTS if str(round_info.get("format", "gp")) == "sprint" else POINTS
+	if round_info.get("double", false):
+		var doubled := PackedInt32Array()
+		for p in table:
+			doubled.append(p * 2)
+		return doubled
+	return table
+
+
+func format_label(round_info: Dictionary) -> String:
+	var parts := PackedStringArray(["SPRINT" if str(round_info.get("format", "gp")) == "sprint" else "GRAND PRIX"])
+	if round_info.get("street", false):
+		parts.append("STREET")
+	if round_info.get("night", false):
+		parts.append("NIGHT")
+	if round_info.get("double", false):
+		parts.append("DOUBLE POINTS")
+	return "  ·  ".join(parts)
+
+
 func board_target_text() -> String:
 	var e := int(my_team()["expectation"])
 	if e <= 2:
@@ -698,7 +729,7 @@ func race_entries() -> Array:
 				"color2": t["color2"], "is_player": mine, "car": machine, "pace": float(d["pace"]),
 				"racecraft": float(d["racecraft"]), "consistency": float(d["consistency"]), "ego": float(d["ego"]), "morale": float(d["morale"]),
 				"wet": float(d["wet"]), "tyres": float(d["tyres"]), "overtaking": float(d["overtaking"]), "defending": float(d["defending"]),
-				"starts": float(d["starts"]), "form": track_form(d, round_track()),
+				"starts": float(d["starts"]), "form": track_form(d, round_track()) - (maxf(0.0, 60.0 - fitness(d)) * 0.02 if mine else 0.0),
 			})
 	return out
 
@@ -737,9 +768,10 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	var podiums := 0
 	var points_scored := 0
 	var dsq := _scrutineer(order)
+	var table := points_table(calendar[mini(int(c["round"]), calendar.size() - 1)])
 	for i in order.size():
 		var car: Dictionary = order[i]
-		var pts := POINTS[i] if i < POINTS.size() and not car["dnf"] else 0
+		var pts := table[i] if i < table.size() and not car["dnf"] else 0
 		c["points"][car["id"]] = int(c["points"].get(car["id"], 0)) + pts
 		c["team_points"][car["team"]] = int(c["team_points"][car["team"]]) + pts
 		if car["is_player"]:
@@ -765,6 +797,12 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	var f: Dictionary = c["factory"]
 	var upkeep := 150 * (int(f["aero"]) + int(f["power"]) + int(f["pit"]) + int(f["rd"]))
 	var staff := int(engineer_salaries() / float(calendar.size()))
+	# Simulator programmes and the boss's own wage.
+	for id: String in lineup() + reserves():
+		if driver(id).get("sim", false):
+			staff += SIMULATOR_COST
+	var contract: Dictionary = c["manager"].get("contract", {})
+	c["manager"]["earned"] = int(c["manager"].get("earned", 0)) + int(float(contract.get("salary", 0)) / calendar.size())
 	GameManager.add_money(prize + sponsor_income - salaries - upkeep - staff)
 	# --- board
 	var best := 99
@@ -792,14 +830,13 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	for t: Dictionary in teams:
 		if t["id"] != c["team"]:
 			c["team_cars"][t["id"]] = clampf(float(c["team_cars"][t["id"]]) + _rng.randf_range(-0.25, 0.4), 55.0, 96.0)
+	var results_by_id := {}
+	for car: Dictionary in order:
+		results_by_id[car["id"]] = car
 	for id: String in c["drivers"]:
-		var d: Dictionary = c["drivers"][id]
-		if int(d["age"]) < 25 and float(d["pace"]) < float(d["potential"]) and d["team"] != "":
-			# Race seats develop fastest; the bench still learns.
-			var gain := 0.25 if reserves().has(id) else 0.55
-			d["pace"] = minf(float(d["potential"]), float(d["pace"]) + gain)
-			d["racecraft"] = minf(97.0, float(d["racecraft"]) + gain * 0.7)
-			d["consistency"] = minf(97.0, float(d["consistency"]) + gain * 0.7)
+		var d := driver(id)
+		if str(d["team"]) != "":
+			_develop(d, results_by_id.get(id, {}))
 	if not c.has("results"):
 		c["results"] = []
 	var summary := PackedStringArray()
@@ -835,9 +872,24 @@ func _finish_season(report: Dictionary) -> void:
 	var delta := (int(my_team()["expectation"]) - pos) * 6
 	c["board"] = clampi(int(c["board"]) + delta, 0, 100)
 	report["season"] = {"position": pos, "payout": payout, "board_change": delta, "champion": standings_drivers()[0]["name"], "season": c["season"]}
+	var wins := 0
+	for r: Dictionary in c.get("results", []):
+		if str(r["result"]).begins_with("P1 ") or str(r["result"]) == "P1" or str(r["result"]).ends_with(" P1"):
+			wins += 1
+	if not c.has("history"):
+		c["history"] = []
+	c["history"].append({"season": int(c["season"]), "team": c["team"], "position": pos, "expected": int(my_team()["expectation"]), "points": int(c["team_points"][c["team"]]), "wins": wins})
+	# The review screen at HQ walks you into the new season.
+	c["season_review"] = report["season"].duplicate()
+	c["season_review"]["team_champion"] = standings_teams()[0]["name"]
+	var contract: Dictionary = c["manager"].get("contract", {})
+	contract["years"] = int(contract.get("years", 1)) - 1
 	if int(c["board"]) <= 0:
 		c["fired"] = true
 		return
+	if int(contract.get("years", 1)) <= 0:
+		# Contract over: the owners renew it only if they still believe in you.
+		c["season_review"]["contract"] = "renew" if int(c["board"]) >= 45 else "expired"
 	c["season"] = int(c["season"]) + 1
 	c["round"] = 0
 	c["results"] = []
@@ -853,6 +905,7 @@ func _finish_season(report: Dictionary) -> void:
 	for id: String in c["drivers"].keys():
 		var d: Dictionary = c["drivers"][id]
 		d["age"] = int(d["age"]) + 1
+		d["season_gain"] = 0.0
 		if int(d["age"]) > 36:
 			d["pace"] = float(d["pace"]) - 0.8
 		if d.get("junior", false) and d["team"] == "":
@@ -1337,6 +1390,7 @@ func weekend_sim() -> GPSim:
 
 func clear_weekend() -> void:
 	_weekend_sim = null
+	quali_results = {}
 	GameManager.career_race = {}
 
 
@@ -1365,6 +1419,37 @@ func quick_sim() -> Dictionary:
 
 
 ## Sets up the on-track race: you drive `driver_id` against the seven cars around you on the grid.
+## Lap times set in this weekend's qualifying, per driver.
+var quali_results: Dictionary = {}
+## Driving at this fraction of the car's ideal lap is worth the driver's simulated grid slot
+## (measured: an average AI driver laps at about 1.2x the ideal); every 1% faster or slower
+## moves the qualifying time by QUALI_SPREAD seconds.
+const QUALI_PAR := 1.215
+const QUALI_SPREAD := 0.25
+
+
+## Qualifying: one flying lap in the real driving game sets this driver's grid slot.
+func prepare_quali(driver_id: String) -> void:
+	build_drive(driver_id)
+	GameManager.career_race["quali"] = driver_id
+	GameManager.start_session(GameManager.MODE_TIME_TRIAL)
+
+
+## Books a qualifying lap. `ratio` = lap time / the car's ideal lap on this track.
+## Returns the new grid position.
+func apply_quali(driver_id: String, lap_time: float, ratio: float) -> int:
+	var sim := weekend_sim()
+	quali_results[driver_id] = lap_time
+	for car in sim.cars:
+		if car["id"] == driver_id:
+			car["quali"] = sim.base_quali(car) + (ratio - QUALI_PAR) * 100.0 * QUALI_SPREAD
+	sim.regrid()
+	for car in sim.cars:
+		if car["id"] == driver_id:
+			return int(car["position"])
+	return 0
+
+
 func prepare_drive(driver_id: String) -> void:
 	build_drive(driver_id)
 	GameManager.start_session(GameManager.MODE_RACE)
@@ -1382,6 +1467,11 @@ func build_drive(driver_id: String) -> void:
 	set_active_car(str(car_for(driver_id)["id"]))
 	var my_strength := driver_car_rating(driver_id)
 	GameManager.session_weather = sim.weather
+	GameManager.session_night = bool(next_round().get("night", false))
+	var sprint := str(next_round().get("format", "gp")) == "sprint"
+	GameManager.race_laps = GameManager.SPRINT_LAPS if sprint else GameManager.RACE_LAPS
+	# Grand Prix rule: in the dry every car must use two different dry compounds - one stop.
+	GameManager.mandatory_stop = not sprint and sim.weather == 0
 	for i in range(start, start + 8):
 		var car: Dictionary = sim.cars[i]
 		if car["id"] == driver_id:
@@ -1393,12 +1483,21 @@ func build_drive(driver_id: String) -> void:
 			"braking_accuracy": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97), "consistency": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97),
 			"aggression": clampf(float(d["ego"]) / 100.0, 0.3, 0.9), "tire_management": 0.7, "error_rate": clampf((100.0 - float(d["consistency"])) / 150.0, 0.03, 0.2),
 			"wet": clampf(float(d["wet"]) / 100.0, 0.4, 1.0),
-			"setup": {"tires": GameManager.setup.parts.get("tires", "tires_hard")},   # same compound as you: a fair fight
+			"setup": {"tires": _rival_tires(sim.weather)},
 		})
 	GameManager.track_id = round_track()
 	GameManager.career_race = {"driver": driver_id, "driver_name": driver(driver_id)["name"], "rivals": rivals, "race": next_round()["name"]}
 	GameManager.active_mission = -1
 	GameManager.session_mode = GameManager.MODE_RACE
+
+
+## Rivals run your dry compound (a fair fight), and rain tyres when it is wet.
+func _rival_tires(weather: int) -> String:
+	if weather > 0:
+		return "tires_inter" if weather == 1 else "tires_wet"
+	var mine: String = GameManager.setup.parts.get("tires", "tires_hard")
+	var part := PartDB.get_part(mine)
+	return "tires_medium" if part == null or part.stat("wet", 0.0) > 0.0 else mine
 
 
 ## Books a race the player drove. `track_position` is 1-8 among the cars that were on track.
@@ -2036,3 +2135,135 @@ func _counter_engineer(offer: Dictionary) -> String:
 	var e := engineer(id)
 	e["salary"] = int(float(e["salary"]) * 1.2)
 	return "%s stays on %s a season." % [e["name"], money_text(float(e["salary"]))]
+
+
+# ---------------------------------------------------------------- driver development
+
+func training(id: String) -> int:
+	return int(state().get("training", {}).get(id, 1))
+
+
+func set_training(id: String, level: int) -> void:
+	if not state().has("training"):
+		state()["training"] = {}
+	state()["training"][id] = clampi(level, 0, 3)
+	GameManager.save()
+
+
+func fitness(d: Dictionary) -> int:
+	return int(d.get("fitness", 90))
+
+
+## How much a driver improves per race, before the race result is known.
+## Young drivers far from their potential learn fastest; veterans decline.
+func development_rate(d: Dictionary) -> float:
+	var age := int(d["age"])
+	var curve := 1.0 if age <= 21 else (0.8 if age <= 24 else (0.45 if age <= 28 else (0.2 if age <= 32 else -0.25)))
+	if curve < 0.0:
+		return curve * 0.4
+	var room := float(d["potential"]) - float(d["pace"])
+	if room <= 0.05:
+		return 0.0
+	var mine: bool = lineup().has(d["id"]) or reserves().has(d["id"])
+	var rate := 0.12 * curve * clampf(room / 6.0, 0.3, 1.5)
+	if mine:
+		rate *= TRAINING_GAIN[training(d["id"])]
+		if d.get("sim", false):
+			rate += 0.06 * curve
+		# A star team-mate teaches a youngster.
+		if age < 24:
+			for other: String in lineup():
+				if other != d["id"] and driver_overall(driver(other)) >= 85:
+					rate *= 1.25
+		if reserves().has(d["id"]):
+			rate *= 0.5                       # the bench learns, but slower than racing
+	return rate
+
+
+## After each race: experience, training load, fitness and the occasional injury.
+func _develop(d: Dictionary, result: Dictionary) -> void:
+	var before := driver_overall(d)
+	var gain := development_rate(d)
+	if not result.is_empty() and gain > 0.0:
+		gain *= 0.6 if result.get("dnf", false) else (1.35 if int(result.get("position", 22)) <= 10 else 1.0)
+	var room := maxf(0.0, float(d["potential"]) - float(d["pace"]))
+	if gain > 0.0:
+		gain = minf(gain, room)
+	d["pace"] = clampf(float(d["pace"]) + gain, 40.0, 99.0)
+	for key: String in ["racecraft", "consistency"]:
+		d[key] = clampf(float(d[key]) + gain * 0.8, 40.0, 99.0)
+	for key: String in ["wet", "tyres", "overtaking", "defending", "starts"]:
+		d[key] = clampf(float(d[key]) + gain * 0.6, 40.0, 99.0)
+	var mine: bool = lineup().has(d["id"]) or reserves().has(d["id"])
+	if mine:
+		var level := training(d["id"])
+		d["fitness"] = clampi(fitness(d) + TRAINING_FITNESS[level], 5, 100)
+		d["morale"] = clampi(int(d["morale"]) + TRAINING_MORALE[level], 5, 100)
+		# Run a driver into the ground and something gives.
+		if fitness(d) < 40 and not is_injured(d["id"]) and _rng.randf() < (40.0 - fitness(d)) / 90.0:
+			_injure(d, _rng.randi_range(1, 2), "worn out by the training load")
+			d["fitness"] = 60
+	d["last_gain"] = driver_overall(d) - before
+	d["season_gain"] = float(d.get("season_gain", 0.0)) + gain
+
+
+# ---------------------------------------------------------------- the manager
+
+func manager_contract() -> Dictionary:
+	var m: Dictionary = state()["manager"]
+	if not m.has("contract"):
+		m["contract"] = {"salary": int(float(my_team()["budget"]) * 0.02), "years": 2}
+	return m["contract"]
+
+
+## 30-99: how good a team principal you have proven to be.
+func manager_rating() -> int:
+	var c := state()
+	var score := 55.0 + (int(c["reputation"]) - 50) * 0.3 + (int(c["board"]) - 50) * 0.1
+	for h: Dictionary in c.get("history", []):
+		score += clampf((int(h["expected"]) - int(h["position"])) * 3.0, -9.0, 12.0) + int(h["wins"]) * 1.0
+	return clampi(int(round(score)), 30, 99)
+
+
+func job_security() -> String:
+	var board := int(state()["board"])
+	if board >= 80:
+		return "UNTOUCHABLE"
+	if board >= 60:
+		return "SAFE"
+	if board >= 40:
+		return "STABLE"
+	return "UNDER PRESSURE" if board >= 20 else "ON THE BRINK"
+
+
+## Teams that would hire you now, with the release fee they would pay your current team.
+func interested_teams() -> Array:
+	var out: Array = []
+	var rating := manager_rating()
+	for t: Dictionary in teams:
+		if t["id"] == state()["team"]:
+			continue
+		var needed := 40 + (11 - int(t["expectation"])) * 4
+		if rating >= needed:
+			out.append({"team": t, "salary": int(float(t["budget"]) * 0.022), "fee": int(float(manager_contract()["salary"]) * maxi(1, int(manager_contract()["years"])) * 0.5)})
+	return out
+
+
+## Move to another team: they buy out your contract and give you a fresh two-year deal.
+func move_to_team(team_id: String) -> String:
+	var deal: Dictionary = {}
+	for offer: Dictionary in interested_teams():
+		if offer["team"]["id"] == team_id:
+			deal = offer
+	var result := _switch_team(team_id)
+	state()["manager"]["contract"] = {"salary": int(deal.get("salary", float(my_team()["budget"]) * 0.02)), "years": 2}
+	return result
+
+
+## Season review answer when the contract has run out: sign the renewal, or leave.
+func renew_contract() -> void:
+	var contract := manager_contract()
+	contract["salary"] = int(float(contract["salary"]) * 1.1)
+	contract["years"] = 2
+	state()["season_review"] = {}
+	GameManager.save()
