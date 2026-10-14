@@ -181,6 +181,16 @@ func ground(area: Rect2) -> void:
 			for spot: Array in _open_spots(3, 160.0):
 				if float(spot[0]) > 62.0:
 					_lake(spot[1], clampf(float(spot[0]) - 46.0, 14.0, 44.0))
+	match str(theme.get("extra", "")):
+		"river":
+			_river()
+		"hills":
+			for i in 8:
+				var p := Vector2(rng.randf_range(area.position.x, area.end.x), rng.randf_range(area.position.y, area.end.y))
+				var r := rng.randf_range(110.0, 220.0)
+				_disc(p + Vector2(r * 0.2, r * 0.25) * PPM, r, Color(0.1, 0.2, 0.1, 0.35), 12, 0.15)
+				_disc(p, r, _col("ground").lightened(0.06), 12, 0.15)
+				_disc(p - Vector2(r * 0.2, r * 0.2) * PPM, r * 0.55, _col("ground").lightened(0.14), 10, 0.15)
 	match str(theme["water"]):
 		"sea":
 			_sea()
@@ -191,6 +201,23 @@ func ground(area: Rect2) -> void:
 			else:
 				# No room inside the lap: the lake sits beyond the far corner.
 				_lake(data.bounds.end + Vector2(170, 150) * PPM, 190.0)
+
+
+## A stream that crosses under the track in a valley (Spa's Eau Rouge).
+func _river() -> void:
+	var j := data.index_at(minf(560.0, data.length * 0.1))
+	var centre := data.points[j]
+	var dir := data.normals[j]
+	var along := Vector2(-dir.y, dir.x)
+	var prev := centre - dir * 380.0 * PPM
+	for k in range(1, 77):
+		var t := k / 76.0
+		var p := centre + dir * lerpf(-380.0, 380.0, t) * PPM + along * sin(t * 9.0) * 14.0 * PPM
+		var w := along * 3.4 * PPM
+		var bank := along * 5.5 * PPM
+		_quad(prev - bank, p - bank, p + bank, prev + bank, Color("6b8f4a"))
+		_quad(prev - w, p - w, p + w, prev + w, WATER)
+		prev = p
 
 
 func _sea() -> void:
@@ -347,6 +374,13 @@ func details() -> void:
 
 func objects() -> void:
 	_trackside()
+	if theme.get("fence", false):
+		_perimeter_fence()
+	match str(theme.get("extra", "")):
+		"banking":
+			_banking()
+		"wing":
+			_pit_building()
 	_landmark()
 	_place_buildings()
 	_rocks()
@@ -381,6 +415,79 @@ func _trackside() -> void:
 			for m in 4:
 				_rot_box(pos + data.tangents[i] * (m - 1.5) * 5.0 * PPM, Vector2(1.2, 0.35), angle, Color.WHITE if brand.get_luminance() < 0.6 else UIKit.INK)
 		reserve(pos, 9.0)
+
+
+## The circuit's boundary fence: chain-link with posts, and a gate with a gatehouse on
+## every side.
+func _perimeter_fence() -> void:
+	var b := data.bounds.grow(120.0 * PPM)
+	var corners := [b.position, Vector2(b.end.x, b.position.y), b.end, Vector2(b.position.x, b.end.y)]
+	for side in 4:
+		var a: Vector2 = corners[side]
+		var c: Vector2 = corners[(side + 1) % 4]
+		var length := a.distance_to(c) / PPM
+		var dir := (c - a).normalized()
+		var normal := Vector2(-dir.y, dir.x)
+		var gate := length * 0.5
+		var d := 0.0
+		while d < length:
+			var p := a + dir * d * PPM
+			var q := a + dir * minf(d + 6.0, length) * PPM
+			if absf(d - gate) > 9.0 and not in_water(p) and track_distance(p) > 30.0:
+				_quad(p - normal * 0.1 * PPM, q - normal * 0.1 * PPM, q + normal * 0.1 * PPM, p + normal * 0.1 * PPM, Color(0.78, 0.8, 0.84, 0.8))
+				_box(p, Vector2(0.25, 0.25), Color("4a4f57"))
+			d += 6.0
+		var g := a + dir * gate * PPM - normal * 8.0 * PPM
+		if not in_water(g):
+			_shadowed_box(g, Vector2(3.0, 2.2), Color("e8e3d6"), 2.5)
+			_box(g, Vector2(1.0, 0.8), Color("3f5f7a"))
+			reserve(g, 6.0)
+
+
+## Monza's old banked oval: two concrete bankings joined by straights in the park.
+func _banking() -> void:
+	var spots := _open_spots(1, 100.0)
+	if spots.is_empty():
+		return
+	var centre: Vector2 = spots[0][1]
+	var r := clampf(float(spots[0][0]) - 50.0, 50.0, 170.0)
+	var straight := r * 2.2
+	var segs := 18
+	for end: float in [-1.0, 1.0]:
+		var c := centre + Vector2(end * straight * 0.5, 0) * PPM
+		for k in segs:
+			var a0 := -PI * 0.5 + PI * k / segs
+			var a1 := -PI * 0.5 + PI * (k + 1) / segs
+			var d0 := Vector2(cos(a0) * end, sin(a0))
+			var d1 := Vector2(cos(a1) * end, sin(a1))
+			_quad(c + d0 * (r - 7.0) * PPM, c + d1 * (r - 7.0) * PPM, c + d1 * (r + 7.0) * PPM, c + d0 * (r + 7.0) * PPM, Color("a8acb2"))
+			_quad(c + d0 * (r + 6.0) * PPM, c + d1 * (r + 6.0) * PPM, c + d1 * (r + 7.5) * PPM, c + d0 * (r + 7.5) * PPM, Color("6f747b"))
+	for side: float in [-1.0, 1.0]:
+		var y := side * r
+		_quad(centre + Vector2(-straight * 0.5, y - 7.0) * PPM, centre + Vector2(straight * 0.5, y - 7.0) * PPM, centre + Vector2(straight * 0.5, y + 7.0) * PPM, centre + Vector2(-straight * 0.5, y + 7.0) * PPM, Color("9ea2a8"))
+	reserve(centre, r + straight * 0.5 + 10.0)
+
+
+## Silverstone's long, curved-roof pit building behind the pit garages.
+func _pit_building() -> void:
+	var hw := data.half_width
+	var from := data.index_at(data.pit_start + 30.0)
+	var to := data.index_at(data.pit_end - 30.0)
+	var steps := posmod(to - from, data.count)
+	for k in steps:
+		var j := data.wrap_index(from + k)
+		var bulge := sin(PI * k / maxf(steps, 1)) * 5.0
+		var inner := -(hw + TrackData.PIT_WIDTH + 9.0)
+		var outer := inner - 9.0 - bulge
+		var n := data.wrap_index(j + 1)
+		var a := data.points[j] + data.normals[j] * inner * PPM
+		var b := data.points[n] + data.normals[n] * inner * PPM
+		var c := data.points[n] + data.normals[n] * outer * PPM
+		var d := data.points[j] + data.normals[j] * outer * PPM
+		_quad(a, b, c, d, Color("eef1f4"))
+		var mid := (inner + outer) * 0.5
+		_quad(data.points[j] + data.normals[j] * (mid + 0.8) * PPM, data.points[n] + data.normals[n] * (mid + 0.8) * PPM, data.points[n] + data.normals[n] * (mid - 0.8) * PPM, data.points[j] + data.normals[j] * (mid - 0.8) * PPM, Color("2f5fae"))
+		reserve(a, 10.0)
 
 
 func _shadowed_box(centre: Vector2, half: Vector2, roof: Color, height_m: float = 3.0) -> void:

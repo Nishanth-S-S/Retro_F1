@@ -124,6 +124,9 @@ func _build_mesh() -> void:
 	for i in n:
 		var j := data.wrap_index(i + 1)
 		var color := COLOR_BARRIER_A if (i / 2) % 2 == 0 else COLOR_BARRIER_B
+		if _scenery.theme.get("walls", false):
+			# Street circuit: bare concrete walls.
+			color = Color("c9ccd1") if (i / 2) % 2 == 0 else Color("b4b8be")
 		_quad(_edge(i, -data.barrier_left[i]), _edge(i + 1, -data.barrier_left[j]), _edge(i + 1, -data.barrier_left[j] - BARRIER_THICKNESS), _edge(i, -data.barrier_left[i] - BARRIER_THICKNESS), color)
 		_quad(_edge(i, data.barrier_right[i]), _edge(i + 1, data.barrier_right[j]), _edge(i + 1, data.barrier_right[j] + BARRIER_THICKNESS), _edge(i, data.barrier_right[i] + BARRIER_THICKNESS), color)
 	_build_scenery()

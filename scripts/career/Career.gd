@@ -67,6 +67,7 @@ var _base_drivers: Array = []
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _rng := RandomNumberGenerator.new()
 var _stats_cache: Dictionary = {}
+var _starter_cache := -1.0
 
 
 func _ready() -> void:
@@ -106,6 +107,9 @@ func active() -> bool:
 		c["regs"]["v"] = 2
 		if int(c["season"]) == 1:
 			c["regs"]["max_wing"] = CarSetup.WING_ANGLE_MAX
+	if not c.has("date"):
+		# Careers from before the calendar start on the Friday of their next race weekend.
+		c["date"] = race_day(int(c["round"])) - 2
 	if not c.has("cars"):
 		# ...and careers from before engineers, multiple cars and FIA rules get those.
 		_init_team_extras()
@@ -169,7 +173,7 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 		"board": 60, "reputation": 50 - int(team(team_id)["expectation"]) * 2 + 10, "fia": 0, "cap_spent": 0, "car_bonus": 0.0,
 		"points": {}, "team_points": {}, "team_cars": {},
 		"pending_event": {}, "last_event": "", "promise": 0, "audited": false, "fired": false, "last_report": {},
-		"people": {}, "inbox": [],
+		"people": {}, "inbox": [], "date": 0, "news": [],
 	}
 	for t: Dictionary in teams:
 		career["team_cars"][t["id"]] = float(t["car"])
@@ -253,15 +257,21 @@ func setup_stats(setup: CarSetup) -> CarStats:
 	return _stats_cache[key]
 
 
-## 45-90 score for a build (the one in the garage when none is given).
+## The car card's overall (30-99) for a build: every setup change moves it.
 func build_rating(setup: CarSetup = null) -> float:
-	var s := setup_stats(setup if setup else GameManager.setup)
-	if not s.valid:
-		return 40.0
-	var cornering := s.mech_grip_g + s.downforce_200 / (s.mass * VehiclePhysicsConfig.GRAVITY) * 0.5
-	var score := 0.3 * clampf(inverse_lerp(250.0, 560.0, s.power_to_weight), 0.0, 1.0) + 0.2 * clampf(inverse_lerp(200.0, 310.0, s.top_speed * 3.6), 0.0, 1.0)
-	score += 0.3 * clampf(inverse_lerp(1.5, 2.4, cornering), 0.0, 1.0) + 0.2 * clampf(inverse_lerp(1.9, 3.3, s.braking_g), 0.0, 1.0)
-	return 45.0 + 45.0 * score
+	var chosen := setup if setup else GameManager.setup
+	return float(CarRatings.compute(chosen, setup_stats(chosen))["overall"])
+
+
+## The overall of the car every team starts with: the baseline car_overall works from.
+func _starter_rating() -> float:
+	if _starter_cache < 0.0:
+		var starter := CarSetup.new()
+		var parts: Dictionary = GameManager.economy.get("starting_parts", {})
+		for slot: String in parts:
+			starter.install(slot, parts[slot])
+		_starter_cache = build_rating(starter)
+	return _starter_cache
 
 
 ## A team's car rating. For your own team it is the average of the cars your race drivers use.
@@ -469,6 +479,21 @@ func promote_reserve(reserve_id: String, seat_id: String) -> String:
 	if state()["number_one"] == seat_id:
 		state()["number_one"] = ""
 	GameManager.save()
+	return ""
+
+
+## Releases a race driver; the best reserve takes the seat. Needs someone on the bench.
+func release_driver(id: String) -> String:
+	if reserves().is_empty():
+		return "SIGN A RESERVE FIRST - SOMEONE HAS TO TAKE THE SEAT"
+	var best := ""
+	for r: String in reserves():
+		if best == "" or driver_overall(driver(r)) > driver_overall(driver(best)):
+			best = r
+	var error := promote_reserve(best, id)
+	if error != "":
+		return error
+	release_reserve(id)
 	return ""
 
 
@@ -726,9 +751,9 @@ func race_entries() -> Array:
 			var machine := driver_car_rating(id) if mine else car_rating(t["id"]) + Difficulty.sim_car_bonus()
 			out.append({
 				"id": id, "name": d["name"], "team": t["id"], "short": t["short"], "color": t["color"], "number": d["number"],
-				"color2": t["color2"], "is_player": mine, "car": machine, "pace": float(d["pace"]),
+				"color2": t["color2"], "is_player": mine, "car": machine + (float(weekend_bonus().get("car", 0.0)) if mine else 0.0), "pace": float(d["pace"]),
 				"racecraft": float(d["racecraft"]), "consistency": float(d["consistency"]), "ego": float(d["ego"]), "morale": float(d["morale"]),
-				"wet": float(d["wet"]), "tyres": float(d["tyres"]), "overtaking": float(d["overtaking"]), "defending": float(d["defending"]),
+				"wet": float(d["wet"]), "tyres": float(d["tyres"]) + (float(weekend_bonus().get("tyres", 0.0)) if mine else 0.0), "overtaking": float(d["overtaking"]), "defending": float(d["defending"]),
 				"starts": float(d["starts"]), "form": track_form(d, round_track()) - (maxf(0.0, 60.0 - fitness(d)) * 0.02 if mine else 0.0),
 			})
 	return out
@@ -843,7 +868,10 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	for m: Dictionary in mine:
 		summary.append("DNF" if m["dnf"] else "P%d" % int(m["position"]))
 	c["results"].append({"season": int(c["season"]), "round": int(c["round"]), "result": " / ".join(summary), "winner": order[0]["name"]})
+	_record_form(order)
 	c["round"] = int(c["round"]) + 1
+	c["date"] = int(c.get("date", 0)) + 1
+	c["weekend"] = {}
 	var report := {
 		"race": calendar[int(c["round"]) - 1]["name"], "mine": mine, "prize": prize, "sponsor": sponsor_income, "salaries": salaries, "upkeep": upkeep,
 		"board_change": board_change, "board": c["board"], "top": [], "staff": staff, "research": int(research["total"]), "dsq": dsq,
@@ -892,6 +920,7 @@ func _finish_season(report: Dictionary) -> void:
 		c["season_review"]["contract"] = "renew" if int(c["board"]) >= 45 else "expired"
 	c["season"] = int(c["season"]) + 1
 	c["round"] = 0
+	c["date"] = 0
 	c["results"] = []
 	c["cap_spent"] = 0
 	c["audited"] = false
@@ -1419,6 +1448,8 @@ func quick_sim() -> Dictionary:
 
 
 ## Sets up the on-track race: you drive `driver_id` against the seven cars around you on the grid.
+## One-line note for HQ to show when it next opens (e.g. after a practice drive).
+var last_note := ""
 ## Lap times set in this weekend's qualifying, per driver.
 var quali_results: Dictionary = {}
 ## Driving at this fraction of the car's ideal lap is worth the driver's simulated grid slot
@@ -1442,7 +1473,7 @@ func apply_quali(driver_id: String, lap_time: float, ratio: float) -> int:
 	quali_results[driver_id] = lap_time
 	for car in sim.cars:
 		if car["id"] == driver_id:
-			car["quali"] = sim.base_quali(car) + (ratio - QUALI_PAR) * 100.0 * QUALI_SPREAD
+			car["quali"] = sim.base_quali(car) + (ratio - QUALI_PAR) * 100.0 * QUALI_SPREAD + float(weekend_bonus().get("quali", 0.0))
 	sim.regrid()
 	for car in sim.cars:
 		if car["id"] == driver_id:
@@ -1874,7 +1905,7 @@ func car_overall(c: Dictionary) -> float:
 	for area: String in c["materials"]:
 		tiers += int(c["materials"][area])
 	var base: float = state()["team_cars"].get(state()["team"], 70.0)
-	return clampf(base + (build_rating(car_setup(c)) - 60.0) * 0.6 + (int(f["aero"]) + int(f["power"])) * 1.5 + float(state()["car_bonus"])
+	return clampf(base + (build_rating(car_setup(c)) - _starter_rating()) * 0.8 + (int(f["aero"]) + int(f["power"])) * 1.5 + float(state()["car_bonus"])
 		+ tiers * MATERIAL_BONUS + float(c.get("tunnel", 0.0)) * TUNNEL_BONUS, 40.0, 99.0)
 
 
@@ -2267,3 +2298,296 @@ func renew_contract() -> void:
 	contract["years"] = 2
 	state()["season_review"] = {}
 	GameManager.save()
+
+
+# ---------------------------------------------------------------- the calendar
+
+## The season runs day by day from 1 March. Each race weekend is Friday practice,
+## Saturday qualifying and the Sunday race; the Friday of the week before is a test day.
+const MONTHS: PackedStringArray = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+const WEEKDAYS: PackedStringArray = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+const FIRST_RACE_GAP := 13           # days from 1 March to the first race Sunday (at least)
+const RACE_SPACING := 14
+
+
+func _season_start_unix() -> int:
+	var year := 2026 + int(state().get("season", 1))
+	return Time.get_unix_time_from_datetime_dict({"year": year, "month": 3, "day": 1, "hour": 12, "minute": 0, "second": 0})
+
+
+func date_dict(day: int) -> Dictionary:
+	return Time.get_datetime_dict_from_unix_time(_season_start_unix() + day * 86400)
+
+
+func date_text(day: int = -1) -> String:
+	var d := date_dict(int(state().get("date", 0)) if day < 0 else day)
+	return "%s %d %s" % [WEEKDAYS[int(d["weekday"])], int(d["day"]), MONTHS[int(d["month"]) - 1]]
+
+
+## Day of the season (0 = 1 March) on which round `index` is raced: always a Sunday.
+func race_day(index: int) -> int:
+	var first := FIRST_RACE_GAP
+	while int(date_dict(first)["weekday"]) != 0:
+		first += 1
+	return first + index * RACE_SPACING
+
+
+func today() -> int:
+	return int(state().get("date", 0))
+
+
+## What happens on a day: "race", "quali", "practice", "test" or "rest", with the round.
+func day_event(day: int = -1) -> Dictionary:
+	var d := today() if day < 0 else day
+	for i in range(int(state()["round"]), calendar.size()):
+		var r := race_day(i)
+		match r - d:
+			0:
+				return {"type": "race", "round": i}
+			1:
+				return {"type": "quali", "round": i}
+			2:
+				return {"type": "practice", "round": i}
+			9:
+				return {"type": "test", "round": i}
+	return {"type": "rest", "round": int(state()["round"])}
+
+
+func day_title(event: Dictionary) -> String:
+	var name := str(calendar[mini(int(event["round"]), calendar.size() - 1)]["name"]).to_upper()
+	match str(event["type"]):
+		"race":
+			return "RACE DAY  ·  %s" % name
+		"quali":
+			return "QUALIFYING  ·  %s" % name
+		"practice":
+			return "FREE PRACTICE  ·  %s" % name
+		"test":
+			return "TEST DAY"
+	return "FACTORY DAY"
+
+
+## Next day. A race day cannot be skipped - it has to be raced (or simulated) first.
+## Returns false when it stopped at a race.
+func next_day() -> bool:
+	var c := state()
+	if day_event()["type"] == "race" or season_over():
+		return false
+	c["date"] = today() + 1
+	_daily_news()
+	GameManager.save()
+	return true
+
+
+## Sim forward: "week", "race" (to the next race day) or "month". Stops at a race day.
+func sim_ahead(span: String) -> int:
+	var days := 7 if span == "week" else (30 if span == "month" else 999)
+	var moved := 0
+	while moved < days:
+		if span == "race" and day_event()["type"] == "race":
+			break
+		if not next_day():
+			break
+		moved += 1
+	return moved
+
+
+func news() -> Array:
+	return state().get("news", [])
+
+
+func _add_news(text: String) -> void:
+	var c := state()
+	if not c.has("news"):
+		c["news"] = []
+	c["news"].push_front({"day": today(), "text": text})
+	while c["news"].size() > 30:
+		c["news"].pop_back()
+
+
+## A little paddock news most days: rival developments, driver form, the forecast.
+func _daily_news() -> void:
+	var event := day_event()
+	if event["type"] in ["practice", "quali"]:
+		var r: Dictionary = calendar[int(event["round"])]
+		_add_news("FORECAST for %s: %d%% chance of rain." % [r["name"], int(float(r["rain"]) * 100.0)])
+		return
+	if _rng.randf() > 0.4:
+		return
+	var t: Dictionary = teams[_rng.randi() % teams.size()]
+	var hot := ""
+	var best := -99.0
+	for id: String in state()["drivers"]:
+		var d := driver(id)
+		if str(d["team"]) != "" and _form_average(d) > best:
+			best = _form_average(d)
+			hot = id
+	var stories: Array = [
+		"%s bring a new floor to the next race." % t["name"],
+		"%s are said to be over budget on their new car." % t["name"],
+		"Wind-tunnel time is the talk of the paddock: %s ran double shifts this week." % t["name"],
+	]
+	if hot != "" and best > 0.5:
+		stories.append("%s is the driver in form - rated up after recent results." % driver(hot)["name"])
+	if t["id"] != state()["team"]:
+		var target: Array = team_drivers(t["id"])
+		if not target.is_empty():
+			stories.append("Rumour: %s unsettled at %s." % [driver(target[0])["name"], t["short"]])
+	_add_news(stories[_rng.randi() % stories.size()])
+
+
+# ---------------------------------------------------------------- practice
+
+const PRACTICE_PROGRAMS := {
+	"setup": {"name": "SETUP WORK", "note": "Dial the car in for this track: +0.6 car rating this weekend, +8 research."},
+	"long_runs": {"name": "RACE SIMULATION", "note": "Long runs on old tyres: better tyre care this weekend, +6 research, a little fitness."},
+	"quali": {"name": "QUALIFYING SIMS", "note": "Low fuel, new tyres: faster qualifying this weekend."},
+	"rookie": {"name": "YOUNG DRIVER DAY", "note": "Reserves run and learn three times as fast; their form gets a rating."},
+}
+
+
+func weekend_bonus() -> Dictionary:
+	return state().get("weekend", {})
+
+
+func practice_done() -> bool:
+	return int(state().get("practice_day", -1)) == today()
+
+
+## Runs a practice or test session with a programme and up to two drivers (reserves too).
+## Returns one result row per driver: name, session position, what they gained.
+func run_practice(program: String, driver_ids: Array) -> Array:
+	var c := state()
+	c["practice_day"] = today()
+	if not c.has("weekend"):
+		c["weekend"] = {}
+	var w: Dictionary = c["weekend"]
+	match program:
+		"setup":
+			w["car"] = minf(1.5, float(w.get("car", 0.0)) + 0.6)
+			c["rp"] = mini(MAX_RP, int(c["rp"]) + 8)
+		"long_runs":
+			w["tyres"] = minf(10.0, float(w.get("tyres", 0.0)) + 5.0)
+			c["rp"] = mini(MAX_RP, int(c["rp"]) + 6)
+		"quali":
+			w["quali"] = maxf(-0.4, float(w.get("quali", 0.0)) - 0.15)
+	var rows: Array = []
+	for id: String in driver_ids:
+		var d := driver(id)
+		# Session order: driver and car against the field, plus the day's noise.
+		var strength := float(driver_overall(d)) * 0.5 + driver_car_rating(id) * 0.5 + _rng.randfn(0.0, 2.0)
+		var position := 1
+		for t: Dictionary in teams:
+			if t["id"] != c["team"] and float(t["car"]) * 0.5 + 82.0 * 0.5 > strength:
+				position += 2
+		position = clampi(position + _rng.randi_range(-1, 1), 1, 22)
+		var expected := _expected_position(d, driver_car_rating(id))
+		_log_form(d, "FP P%d" % position, clampf((expected - position) / 3.0, -3.0, 3.0) * 0.6)
+		var gain := development_rate(d) * (3.0 if program == "rookie" and reserves().has(id) else 0.35)
+		d["pace"] = minf(99.0, float(d["pace"]) + maxf(gain, 0.0))
+		d["fitness"] = clampi(fitness(d) - (4 if program == "long_runs" else 2), 5, 100)
+		rows.append({"name": d["name"], "position": position, "gain": gain})
+	GameManager.save()
+	return rows
+
+
+## Drive the practice yourself in the real game, on this weekend's circuit.
+func prepare_practice(driver_id: String) -> void:
+	build_drive(driver_id)
+	GameManager.career_race = {"practice": driver_id, "driver_name": driver(driver_id)["name"]}
+	GameManager.start_session(GameManager.MODE_TEST)
+
+
+func finish_practice_drive(laps: int) -> String:
+	var c := state()
+	c["practice_day"] = today()
+	if not c.has("weekend"):
+		c["weekend"] = {}
+	var bonus := minf(1.5, 0.35 * laps)
+	c["weekend"]["car"] = minf(1.5, float(c["weekend"].get("car", 0.0)) + bonus)
+	c["rp"] = mini(MAX_RP, int(c["rp"]) + 4 * laps)
+	GameManager.save()
+	return "PRACTICE: %d LAPS  ·  CAR +%.1f THIS WEEKEND  ·  +%d RESEARCH" % [laps, bonus, 4 * laps]
+
+
+# ---------------------------------------------------------------- form and ratings
+
+## Where a driver should finish on paper: their car and their overall against the field.
+func _expected_position(d: Dictionary, car: float) -> float:
+	var mine := car * 0.6 + driver_overall(d) * 0.4
+	var better := 0
+	for t: Dictionary in teams:
+		for id: String in team_drivers(t["id"]):
+			if id == d["id"]:
+				continue
+			var other := driver(id)
+			if car_rating(t["id"]) * 0.6 + driver_overall(other) * 0.4 > mine:
+				better += 1
+	return float(better + 1)
+
+
+func _log_form(d: Dictionary, label: String, score: float) -> void:
+	if not d.has("log"):
+		d["log"] = []
+	var log: Array = d["log"]
+	log.push_front({"r": label, "s": snappedf(score, 0.01)})
+	while log.size() > 6:
+		log.pop_back()
+
+
+func _form_average(d: Dictionary) -> float:
+	var log: Array = d.get("log", [])
+	if log.is_empty():
+		return 0.0
+	var total := 0.0
+	for entry: Dictionary in log.slice(0, 5):
+		total += float(entry["s"])
+	return total / mini(log.size(), 5)
+
+
+## After each race every driver who raced gets a form score: finishing position against
+## where their car and rating said they should be, a bonus for beating the team-mate,
+## a penalty for crashing out. Ratings then drift with the last five scores, and young
+## drivers who keep over-performing have their potential raised (and the reverse).
+func _record_form(order: Array) -> void:
+	var by_team := {}
+	for i in order.size():
+		var car: Dictionary = order[i]
+		if not by_team.has(car["team"]):
+			by_team[car["team"]] = []
+		by_team[car["team"]].append(i)
+	for i in order.size():
+		var car: Dictionary = order[i]
+		var d := driver(car["id"])
+		if d.is_empty() or d.get("hidden", false):
+			continue
+		var expected := _expected_position(d, float(car["car"]))
+		var score := clampf((expected - (i + 1)) / 3.0, -3.0, 3.0)
+		var label := "P%d" % (i + 1)
+		if car["dnf"]:
+			score = -2.0 if car.get("crashed", false) else 0.0
+			label = "DSQ" if car.get("dsq", false) else "DNF"
+		var mates: Array = by_team.get(car["team"], [])
+		if mates.size() == 2 and mates[0] == i and not car["dnf"]:
+			score += 0.5
+		_log_form(d, label, score)
+		_rate_from_form(d)
+	# Reserves who did not race drift back towards neutral form.
+	for id: String in reserves():
+		var d := driver(id)
+		if not d.has("log"):
+			d["log"] = []
+
+
+func _rate_from_form(d: Dictionary) -> void:
+	var form := _form_average(d)
+	var before := driver_overall(d)
+	var shift := form * 0.12
+	d["pace"] = clampf(float(d["pace"]) + shift, 40.0, 99.0)
+	d["racecraft"] = clampf(float(d["racecraft"]) + shift * 0.7, 40.0, 99.0)
+	d["consistency"] = clampf(float(d["consistency"]) + shift * 0.7, 40.0, 99.0)
+	if int(d["age"]) <= 26:
+		d["potential"] = clampf(float(d["potential"]) + form * 0.15, float(d["pace"]), 99.0)
+	elif form < 0.0:
+		d["potential"] = maxf(float(d["pace"]), float(d["potential"]) + form * 0.05)
+	d["form_change"] = int(d.get("form_change", 0)) + driver_overall(d) - before

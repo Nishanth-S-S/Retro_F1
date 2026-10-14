@@ -11,6 +11,7 @@ const THEMES := {
 		"ground": "c8a468", "stripe": "c29c5f", "patch": "b8925a", "gravel": "e6d3a4",
 		"trees": ["cactus", "shrub", "cactus"], "tree_count": 520, "tree_a": "4f7a3a", "tree_b": "6b9a48",
 		"buildings": "adobe", "building_count": 46, "rocks": 170, "landmark": "solar", "water": "",
+		"fence": true,
 	},
 	# Harbour city: paved blocks, towers, palms, a quay with cranes and yachts on the sea.
 	"port_azure": {
@@ -18,6 +19,7 @@ const THEMES := {
 		"ground": "9aa1a8", "stripe": "a1a8af", "patch": "8f969d", "gravel": "d9cba6",
 		"trees": ["palm"], "tree_count": 260, "tree_a": "2f7d46", "tree_b": "4fa85e",
 		"buildings": "city", "building_count": 150, "rocks": 0, "landmark": "harbour", "water": "sea",
+		"walls": true,
 	},
 	# Royal park: striped lawns, big round trees, ponds, hedges and red-roofed villas.
 	"tempo_park": {
@@ -25,6 +27,7 @@ const THEMES := {
 		"ground": "3d7a3a", "stripe": "44853f", "patch": "357034", "gravel": "c9b58a",
 		"trees": ["round", "round", "hedge"], "tree_count": 1000, "tree_a": "275c2c", "tree_b": "347a39",
 		"buildings": "villa", "building_count": 34, "rocks": 0, "landmark": "ponds", "water": "",
+		"fence": true,
 	},
 	# Old airfield: pale windswept grass, runways, hangars, parked planes, the lake along one side.
 	"silver_lake": {
@@ -47,6 +50,7 @@ const THEMES := {
 		"ground": "3f7a3a", "stripe": "47843f", "patch": "366f34", "gravel": "cdb98c",
 		"trees": ["round", "round", "round", "hedge"], "tree_count": 1300, "tree_a": "24582a", "tree_b": "357a38",
 		"buildings": "villa", "building_count": 40, "rocks": 0, "landmark": "ponds", "water": "",
+		"fence": true, "extra": "banking",
 	},
 	# Silverstone: a wartime airfield in the English countryside.
 	"silverstone": {
@@ -54,6 +58,7 @@ const THEMES := {
 		"ground": "6f9a52", "stripe": "77a35a", "patch": "66904b", "gravel": "cfc39c",
 		"trees": ["round", "hedge", "shrub"], "tree_count": 520, "tree_a": "345f2e", "tree_b": "4d8240",
 		"buildings": "hangar", "building_count": 26, "rocks": 0, "landmark": "airfield", "water": "",
+		"fence": true, "extra": "wing",
 	},
 	# Spa: through the Ardennes forest - dense pines and wooden chalets.
 	"spa": {
@@ -61,13 +66,15 @@ const THEMES := {
 		"ground": "2f5a36", "stripe": "33603b", "patch": "2a5232", "gravel": "b9b3a2",
 		"trees": ["pine", "pine", "round"], "tree_count": 2200, "tree_a": "173d27", "tree_b": "2b6a3e",
 		"buildings": "cabin", "building_count": 50, "rocks": 50, "landmark": "", "water": "",
+		"fence": true, "extra": "river",
 	},
 	# Interlagos: inside the city of Sao Paulo - streets, towers, palms.
 	"interlagos": {
 		"label": "SAO PAULO", "rain": 0.35,
 		"ground": "9a9f98", "stripe": "a1a69f", "patch": "8d9590", "gravel": "d0bf95",
 		"trees": ["palm", "round"], "tree_count": 300, "tree_a": "2f7d46", "tree_b": "4fa85e",
-		"buildings": "city", "building_count": 150, "rocks": 0, "landmark": "", "water": "",
+		"buildings": "city", "building_count": 150, "rocks": 0, "landmark": "", "water": "lake",
+		"extra": "lake",
 	},
 	# Red Bull Ring: Styrian alpine meadows with rocks and farmhouses.
 	"spielberg": {
@@ -75,6 +82,7 @@ const THEMES := {
 		"ground": "6a9a4a", "stripe": "72a352", "patch": "5e8c42", "gravel": "c9c0a0",
 		"trees": ["pine", "round", "shrub"], "tree_count": 900, "tree_a": "214a2c", "tree_b": "3f7a3a",
 		"buildings": "cabin", "building_count": 40, "rocks": 140, "landmark": "", "water": "",
+		"fence": true, "extra": "hills",
 	},
 }
 

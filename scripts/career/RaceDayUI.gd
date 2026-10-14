@@ -8,9 +8,10 @@ var _sim: GPSim
 func _ready() -> void:
 	theme = UIKit.theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	if not Career.active() or Career.state()["fired"]:
+	if not Career.active() or Career.state()["fired"] or not (str(Career.day_event()["type"]) in ["quali", "race"]):
 		SceneManager.call_deferred("goto", "career")
 		return
+	var quali_day := str(Career.day_event()["type"]) == "quali"
 	_sim = Career.weekend_sim()
 	var round_info := Career.next_round()
 	var track_id := Career.round_track()
@@ -24,7 +25,7 @@ func _ready() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 14)
 	margin.add_child(root)
-	root.add_child(UIKit.title_bar(str(round_info["name"])))
+	root.add_child(UIKit.title_bar("%s  -  %s" % [str(round_info["name"]), "QUALIFYING" if quali_day else "RACE"]))
 	# --- where and when
 	var where := HBoxContainer.new()
 	where.add_theme_constant_override("separation", 20)
@@ -54,22 +55,29 @@ func _ready() -> void:
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		col.add_theme_constant_override("separation", 8)
 		drive.add_child(col)
+		if quali_day:
+			# Saturday: one flying lap decides the grid slot.
+			var done: bool = Career.quali_results.has(id)
+			var q := UIKit.button(("QUALIFIED\n%s\nP%d" % [str(car["name"]).to_upper(), int(car["position"])]) if done else "QUALIFY\n%s\nONE FLYING LAP" % str(car["name"]).to_upper(), 24, not done)
+			q.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			q.disabled = done or not ready
+			q.pressed.connect(func() -> void: Career.prepare_quali(id))
+			col.add_child(q)
+			continue
 		var b := UIKit.button("DRIVE\n%s\nSTARTS P%d" % [str(car["name"]).to_upper(), int(car["position"])], 26, true)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.disabled = not ready
 		b.pressed.connect(func() -> void: Career.prepare_drive(id))
 		col.add_child(b)
-		# Qualifying: one flying lap decides the grid slot - once per weekend.
-		var done: bool = Career.quali_results.has(id)
-		var q := UIKit.button("QUALIFIED  %s" % LapTimer.format_time(float(Career.quali_results[id])) if done else "QUALIFY  -  ONE FLYING LAP", 16)
-		q.custom_minimum_size = Vector2(0, 58)
-		q.disabled = done or not ready
-		q.pressed.connect(func() -> void: Career.prepare_quali(id))
-		col.add_child(q)
-	var quick := UIKit.button("SIMULATE\nTHE RACE", 26)
+	var quick := UIKit.button("DONE\nNEXT DAY" if quali_day else "SIMULATE\nTHE RACE", 26)
 	quick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	quick.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	quick.pressed.connect(func() -> void: RaceReport.show(self, Career.quick_sim()))
+	quick.pressed.connect(func() -> void:
+		if quali_day:
+			Career.next_day()
+			SceneManager.goto("career")
+		else:
+			RaceReport.show(self, Career.quick_sim()))
 	drive.add_child(quick)
 	# --- footer
 	var foot := HBoxContainer.new()

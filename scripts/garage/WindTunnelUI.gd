@@ -17,7 +17,9 @@ var _wind := 0.0                     # 0-1 fan speed
 var _viewport: SubViewport
 var _camera: Camera3D
 var _car: Node3D
-var _streams: Array[MeshInstance3D] = []
+var _streams: Array[MeshInstance3D] = []         # moving pulses, one per lane
+var _hot: Node3D                                  # tinted segments over the weak areas
+var _weakest := ""
 var _numbers: Dictionary = {}        # title -> Label
 var _status: Label
 var _run_button: Button
@@ -143,18 +145,71 @@ func _build_world() -> void:
 		_box(room, Vector3(0.3, 0.5, 0.5), Vector3(-6.2, 1.8 + sin(angle) * 1.7, cos(angle) * 1.7), Color("8b95a3"))
 	_car = Node3D.new()
 	_viewport.add_child(_car)
-	# Streamlines: glowing dashes that fly from the nose to the tail.
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5
-	for i in 46:
-		var dash := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(0.7, 0.03, 0.03)
-		dash.mesh = mesh
-		dash.material_override = _material(Color("4fb3d9"), true)
-		dash.set_meta("lane", Vector3(rng.randf(), rng.randf_range(0.15, 1.5), rng.randf_range(-1.6, 1.6)))
-		_viewport.add_child(dash)
-		_streams.append(dash)
+	# Streamlines: straight lines from nose to tail, each with a bright pulse riding it.
+	for y: float in [0.2, 0.45, 0.75, 1.05, 1.4]:
+		for z: float in [-1.3, -0.8, -0.4, 0.0, 0.4, 0.8, 1.3]:
+			var line := MeshInstance3D.new()
+			var mesh := BoxMesh.new()
+			mesh.size = Vector3(12.0, 0.018, 0.018)
+			line.mesh = mesh
+			line.material_override = _material(Color("2c5f7a"), true)
+			line.position = Vector3(1.5, y, z)
+			_viewport.add_child(line)
+			var pulse := MeshInstance3D.new()
+			var pm := BoxMesh.new()
+			pm.size = Vector3(0.6, 0.03, 0.03)
+			pulse.mesh = pm
+			pulse.material_override = _material(Color("8fe3ff"), true)
+			pulse.set_meta("lane", Vector3(randf(), y, z))
+			_viewport.add_child(pulse)
+			_streams.append(pulse)
+	_hot = Node3D.new()
+	_viewport.add_child(_hot)
+
+
+## Where the car is weakest: the aero areas that rate worst get their streamlines tinted
+## orange to red. Zones: [name, x from, x to, y max, |z| from, |z| to, severity].
+func _weak_zones() -> Array:
+	var card := CarRatings.compute(GameManager.setup, _stats)
+	var r := {}
+	for row: Array in card["ratings"]:
+		r[row[0]] = int(row[1])
+	var sev := func(rating: int) -> float: return clampf((78.0 - rating) / 38.0, 0.0, 1.0)
+	var balance := _stats.balance_index
+	var body: Dictionary = CarSetup.BODY_SETS[GameManager.setup.body]
+	return [
+		["FRONT WING (GRIP)", 3.4, 4.4, 0.55, 0.0, 1.0, sev.call(r["DOWNFORCE"]) * 0.7 + (0.5 if balance < -0.03 else 0.0)],
+		["REAR WING (DRAG)", -1.0, 0.1, 1.5, 0.0, 0.8, sev.call(r["DRAG EFFICIENCY"]) + (0.4 if balance > 0.03 else 0.0)],
+		["WHEELS (DRAG)", -0.5, 3.5, 0.75, 0.6, 1.1, sev.call(r["DRAG EFFICIENCY"]) * 0.8],
+		["FLOOR (DOWNFORCE)", 0.3, 3.2, 0.3, 0.0, 0.7, sev.call(r["DOWNFORCE"]) + (GameManager.setup.ride_height - 5) * 0.06],
+		["SIDEPODS (DRAG)", 0.7, 2.3, 0.75, 0.35, 0.75, clampf((float(body["drag"]) - 0.95) * 6.0, 0.0, 1.0)],
+	]
+
+
+func _paint_weak_zones() -> void:
+	for child in _hot.get_children():
+		child.queue_free()
+	_weakest = ""
+	var worst := 0.15
+	for zone: Array in _weak_zones():
+		var severity := float(zone[6])
+		if severity <= 0.15:
+			continue
+		if severity > worst:
+			worst = severity
+			_weakest = str(zone[0])
+		var color := Color("ffb347").lerp(Color("ff3b30"), clampf(severity, 0.0, 1.0))
+		for y: float in [0.2, 0.45, 0.75, 1.05, 1.4]:
+			for z: float in [-1.3, -0.8, -0.4, 0.0, 0.4, 0.8, 1.3]:
+				if y > float(zone[3]) or absf(z) < float(zone[4]) or absf(z) > float(zone[5]):
+					continue
+				var seg := MeshInstance3D.new()
+				var mesh := BoxMesh.new()
+				mesh.size = Vector3(float(zone[2]) - float(zone[1]), 0.03, 0.03)
+				seg.mesh = mesh
+				seg.material_override = _material(color, true)
+				seg.position = Vector3((float(zone[1]) + float(zone[2])) * 0.5, y, z)
+				_hot.add_child(seg)
 
 
 ## Rebuilds the blocky car from the setup: wing angles, wing size, engine size and team
@@ -221,6 +276,7 @@ func open() -> void:
 	_run = -1.0
 	_wind = 0.0
 	_build_car()
+	_paint_weak_zones()
 	_title.set_meta("title", "WIND TUNNEL  -  %s" % (str(Career.active_car()["name"]) if Career.active() else "TEST CAR"))
 	_title.queue_redraw()
 	_refresh("")
@@ -248,6 +304,8 @@ func _refresh(note: String) -> void:
 			_run_button.disabled = true
 	else:
 		_status.text = "MEASURED AT 200 KM/H"
+	if _weakest != "":
+		_status.text += "   ·   WEAKEST: %s" % _weakest
 	if note != "":
 		_status.text = note
 
@@ -286,12 +344,9 @@ func _process(delta: float) -> void:
 	var angle := _time * 0.35
 	_camera.position = Vector3(1.6 + cos(angle) * 5.9, 2.2, sin(angle) * 5.9)
 	_camera.look_at(Vector3(1.6, 0.45, 0))
-	# Air comes in over the nose (+x) and leaves past the rear wing, lifting over the car.
-	for dash in _streams:
-		var lane: Vector3 = dash.get_meta("lane")
-		var t := fposmod(lane.x - _time * (0.06 + 0.9 * _wind), 1.0)
-		var x := lerpf(-4.5, 7.5, t)
-		var over := exp(-pow((x - 1.5) / 2.4, 2.0)) * maxf(0.0, 1.0 - absf(lane.z) / 1.1)
-		dash.position = Vector3(x, lane.y + over * 0.95, lane.z * (1.0 + over * 0.25))
-		dash.scale.x = 0.4 + 1.6 * _wind
-		(dash.material_override as StandardMaterial3D).albedo_color = Color("4fb3d9").lerp(Color("ff7a2e"), over * _wind)
+	# Pulses run straight from the nose (+x) past the tail; faster with the fan.
+	for pulse in _streams:
+		var lane: Vector3 = pulse.get_meta("lane")
+		var t := fposmod(lane.x - _time * (0.05 + 0.6 * _wind), 1.0)
+		pulse.position = Vector3(lerpf(-4.5, 7.5, t), lane.y, lane.z)
+		pulse.scale.x = 0.6 + 2.0 * _wind

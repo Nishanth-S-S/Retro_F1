@@ -14,6 +14,7 @@ var _toast: Label
 var _modal: Control
 ## Scouting page: false = free agents and juniors, true = rival drivers with release clauses.
 var _show_rivals := false
+var _day_button: Button
 
 
 func _ready() -> void:
@@ -58,12 +59,16 @@ func _ready() -> void:
 		b.pressed.connect(func() -> void: _show_tab(i))
 		bar.add_child(b)
 		_tab_buttons.append(b)
-	var race := UIKit.button("RACE  >", 24, true)
-	race.custom_minimum_size = Vector2(250, 66)
-	race.pressed.connect(func() -> void: SceneManager.goto("raceday"))
-	bar.add_child(race)
+	# The day button: race / qualify on a race weekend, otherwise on to the next day.
+	_day_button = UIKit.button("", 22, true)
+	_day_button.custom_minimum_size = Vector2(250, 66)
+	_day_button.pressed.connect(_on_day_button)
+	bar.add_child(HubPanels.press_anim(_day_button))
 	EventBus.money_changed.connect(func(_a: int) -> void: _build_header())
 	_show_tab(0)
+	if Career.last_note != "":
+		_say(Career.last_note)
+		Career.last_note = ""
 	_check_interrupts.call_deferred()
 
 
@@ -108,8 +113,28 @@ func _build_header() -> void:
 	_header.add_child(phone)
 
 
+func _refresh_day_button() -> void:
+	match str(Career.day_event()["type"]):
+		"race":
+			_day_button.text = "RACE  >"
+		"quali":
+			_day_button.text = "QUALIFYING  >"
+		_:
+			_day_button.text = "NEXT DAY  >"
+
+
+func _on_day_button() -> void:
+	var kind := str(Career.day_event()["type"])
+	if kind == "race" or kind == "quali":
+		SceneManager.goto("raceday")
+		return
+	Career.next_day()
+	_show_tab(_tab)
+
+
 func _show_tab(index: int) -> void:
 	_tab = index
+	_refresh_day_button()
 	for i in _tab_buttons.size():
 		_tab_buttons[i].button_pressed = i == index
 	_build_header()
@@ -174,19 +199,32 @@ func _tab_hq() -> void:
 	var c := Career.state()
 	var team := Career.my_team()
 	var row := _columns()
-	# --- next race
-	var next := _card(row, "ROUND %d / %d" % [int(c["round"]) + 1, Career.calendar.size()])
+	# --- today: the date, what is on, the news, and moving time on
+	var event := Career.day_event()
+	var next := _card(row, "SEASON %d  ·  ROUND %d / %d" % [int(c["season"]), int(c["round"]) + 1, Career.calendar.size()])
+	_text(next, Career.date_text(), 30)
+	_text(next, Career.day_title(event), 18, UIKit.HOT)
 	var round_info := Career.next_round()
-	_text(next, str(round_info["name"]).to_upper(), 28)
-	_text(next, "%s  ·  %s" % [GameManager.TRACK_NAMES.get(Career.round_track(), ""), Career.format_label(round_info)], 16, UIKit.TEXT_DIM)
-	var chips := HBoxContainer.new()
-	chips.add_theme_constant_override("separation", 8)
-	next.add_child(chips)
-	chips.add_child(Art.chip("CAR", int(round(Career.car_rating(c["team"]))), UIKit.LINE.darkened(0.3)))
-	chips.add_child(Art.chip("TEAM", Career.team_rating(c["team"]), UIKit.WARM))
-	chips.add_child(Art.chip("POSITION", Career.team_position(), Color("23262e")))
-	chips.add_child(Art.chip("RESEARCH", int(c["rp"]), UIKit.LINE.darkened(0.3)))
-	chips.add_child(Art.chip("R&D LVL", Career.rd_level(), Color("23262e")))
+	var until := Career.race_day(int(c["round"])) - Career.today()
+	_text(next, "NEXT: %s  ·  %s  ·  %s" % [str(round_info["name"]).to_upper(), Career.format_label(round_info), "TODAY" if until == 0 else "IN %d DAY%s" % [until, "" if until == 1 else "S"]], 15, UIKit.TEXT_DIM)
+	var kind := str(event["type"])
+	if kind == "practice" or kind == "test":
+		next.add_child(_big("RUN PRACTICE" if not Career.practice_done() else "PRACTICE DONE", true, func() -> void: HubPanels.practice_sheet(self), 18, 56.0))
+		(next.get_child(next.get_child_count() - 1) as Button).disabled = Career.practice_done()
+	var sims := HBoxContainer.new()
+	sims.add_theme_constant_override("separation", 6)
+	next.add_child(sims)
+	for info: Array in [["+1 WEEK", "week"], ["TO NEXT RACE", "race"], ["+1 MONTH", "month"]]:
+		var span: String = info[1]
+		var b := _big(info[0], false, func() -> void:
+			var moved := Career.sim_ahead(span)
+			_say("%d DAYS LATER  ·  %s" % [moved, Career.date_text()])
+			_show_tab(0), 15, 50.0)
+		b.disabled = kind == "race"
+		sims.add_child(HubPanels.press_anim(b))
+	var latest: Array = Career.news().slice(0, 2)
+	for item: Dictionary in latest:
+		_text(next, "NEWS  %s:  %s" % [Career.date_text(int(item["day"])), item["text"]], 13, UIKit.TEXT_DIM)
 	var alerts := PackedStringArray()
 	for car: Dictionary in Career.cars():
 		if not Career.car_violations(car).is_empty():
@@ -194,10 +232,8 @@ func _tab_hq() -> void:
 	for id: String in Career.lineup():
 		if Career.is_injured(id):
 			alerts.append("%s INJURED" % str(Career.driver(id)["name"]).get_slice(" ", 1).to_upper())
-	if (c["sponsor"] as Dictionary).is_empty():
-		alerts.append("NO SPONSOR")
 	if not alerts.is_empty():
-		_text(next, "  ·  ".join(alerts.slice(0, 3)), 16, UIKit.BAD)
+		_text(next, "  ·  ".join(alerts.slice(0, 3)), 15, UIKit.BAD)
 	# --- the coach (you): tap for contract, rating, history and offers
 	var me := _card(row, "SEASON %d" % int(c["season"]))
 	var manager: Dictionary = c["manager"]
@@ -214,12 +250,14 @@ func _tab_hq() -> void:
 	_text(info, Career.board_target_text().to_upper(), 16, UIKit.HOT)
 	var board := int(c["board"])
 	info.add_child(Art.rating_bar("BOARD", board, UIKit.GOOD if board >= 50 else (Color("e0a23a") if board >= 25 else UIKit.BAD), 340.0))
-	var report: Dictionary = c["last_report"]
-	if not report.is_empty():
-		var parts := PackedStringArray()
-		for m: Dictionary in report["mine"]:
-			parts.append("DNF" if m["dnf"] else "P%d" % int(m["position"]))
-		_text(info, "LAST RACE  %s" % " / ".join(parts), 16, UIKit.TEXT_DIM)
+	var chips := HBoxContainer.new()
+	chips.add_theme_constant_override("separation", 6)
+	me.add_child(chips)
+	chips.add_child(Art.chip("CAR", int(round(Career.car_rating(c["team"]))), UIKit.LINE.darkened(0.3)))
+	chips.add_child(Art.chip("TEAM", Career.team_rating(c["team"]), UIKit.WARM))
+	chips.add_child(Art.chip("POS", Career.team_position(), Color("23262e")))
+	chips.add_child(Art.chip("RESEARCH", int(c["rp"]), UIKit.LINE.darkened(0.3)))
+	chips.add_child(Art.chip("R&D LVL", Career.rd_level(), Color("23262e")))
 	HubPanels.clickable(me.get_parent(), func() -> void: HubPanels.manager_card(self))
 	var actions := _columns()
 	var sponsor: Dictionary = c["sponsor"]
@@ -437,7 +475,7 @@ func _show_schedule() -> void:
 					status = str(r["result"])
 		elif i == int(c["round"]):
 			status = "<  NEXT"
-		lines.append("%2d  %-24s %-8s %s" % [i + 1, str(info["name"]).to_upper().left(24), "SPRINT" if str(info.get("format", "gp")) == "sprint" else ("FINALE x2" if info.get("double", false) else "GP"), status])
+		lines.append("%2d  %-10s %-22s %-8s %s" % [i + 1, Career.date_text(Career.race_day(i)), str(info["name"]).to_upper().left(22), "SPRINT" if str(info.get("format", "gp")) == "sprint" else ("FINALE x2" if info.get("double", false) else "GP"), status])
 	_show_modal("SEASON %d" % int(c["season"]), "SCHEDULE", "\n".join(lines), [["CLOSE", _close_modal]])
 
 

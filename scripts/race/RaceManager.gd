@@ -871,6 +871,12 @@ func _end_session(next_scene: String) -> void:
 	_leaving = true
 	get_tree().paused = false
 	positions.update(cars, timers, track.length)
+	if GameManager.career_race.has("practice"):
+		# Practice books the laps you did and goes back to HQ.
+		Career.last_note = Career.finish_practice_drive(player_timer.laps_completed)
+		GameManager.career_race = {}
+		SceneManager.goto("career")
+		return
 	if GameManager.career_race.has("quali"):
 		# Qualifying goes straight back to race day with the new grid.
 		GameManager.career_race = {}

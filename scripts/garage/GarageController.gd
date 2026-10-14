@@ -1,7 +1,7 @@
 extends Control
 ## Garage scene root. The screen is just the car: tap a part of it and the whole sidebar on
 ## the left becomes the picker for that hardpoint. Four simple bars summarise the build; the full
-## engineering readout is one tap away under FULL STATS.
+## car card - every rating and the overall - is one tap away under CAR CARD.
 
 const PANEL_WIDTH := 410.0
 ## Which tuning slider belongs to which hardpoint.
@@ -14,8 +14,9 @@ var _active_slot := ""
 var _selected_part: VehiclePart
 
 var _workspace: BlueprintWorkspace
-var _stats_panel: GarageUI
 var _details: Control
+var _card_list: VBoxContainer
+var _card_overall: Label
 var _drag: PartDragHandler
 var _popup: InfoPopup
 var _money_label: Label
@@ -207,10 +208,12 @@ func _build_side_panel() -> void:
 	box.add_child(modes)
 	_summary_nodes.append(test)
 	_summary_nodes.append(modes)
-	var stats := UIKit.button("FULL STATS", 15)
+	var stats := UIKit.button("CAR CARD", 15)
 	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stats.custom_minimum_size = Vector2(0, 44)
-	stats.pressed.connect(func() -> void: _details.visible = true)
+	stats.pressed.connect(func() -> void:
+		_refresh_car_card()
+		_details.visible = true)
 	modes.add_child(stats)
 	var hq := UIKit.button("TEAM HQ" if Career.active() else "MENU", 15)
 	hq.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -219,43 +222,83 @@ func _build_side_panel() -> void:
 	modes.add_child(hq)
 
 
+## The car card: overall plus every rating, full screen. Opened from CAR CARD.
 func _build_details() -> void:
 	_details = Control.new()
 	_details.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_details.visible = false
 	add_child(_details)
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.25)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and event.pressed:
-			_details.visible = false)
-	_details.add_child(dim)
-	_stats_panel = GarageUI.new()
-	_place(_stats_panel, 0.0, 0.0, 0.0, 1.0, 12, 78, PANEL_WIDTH + 12, -124)
-	_stats_panel.term_tapped.connect(func(term: String) -> void: _popup.open_term(term))
-	_details.add_child(_stats_panel)
-	var views := HBoxContainer.new()
-	views.add_theme_constant_override("separation", 6)
-	_place(views, 0.0, 1.0, 0.0, 1.0, 12, -118, PANEL_WIDTH + 12, -70)
-	_details.add_child(views)
-	for overlay: String in ["MASS", "AERO"]:
-		var b := UIKit.button("SHOW " + overlay, 13)
-		b.toggle_mode = true
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.toggled.connect(func(on: bool) -> void:
-			if overlay == "MASS":
-				_workspace.show_mass = on
-			else:
-				_workspace.show_aero = on)
-		views.add_child(b)
-	var close := UIKit.button("CLOSE", 16, true)
-	_place(close, 0.0, 1.0, 0.0, 1.0, 12, -64, PANEL_WIDTH + 12, -12)
-	close.pressed.connect(func() -> void: _details.visible = false)
-	_details.add_child(close)
+	var bg := ColorRect.new()
+	bg.color = UIKit.BG
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_details.add_child(bg)
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	_details.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 10)
+	margin.add_child(root)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	root.add_child(head)
+	var back := UIKit.button("<-  BACK", 18)
+	back.custom_minimum_size = Vector2(150, 54)
+	back.pressed.connect(func() -> void: _details.visible = false)
+	head.add_child(back)
+	head.add_child(UIKit.title_bar("CAR CARD", 54.0))
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 24)
+	root.add_child(body)
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(300, 0)
+	left.add_theme_constant_override("separation", 10)
+	body.add_child(left)
+	var team := Career.my_team() if Career.active() else {"color": "#c8201e", "color2": "#f4f6f2"}
+	left.add_child(Art.make(Vector2(300, 150), func(a: Control) -> void:
+		a.draw_rect(Rect2(Vector2.ZERO, a.size), Color("3a3d45"))
+		PixelArt.draw_checker(a, Rect2(0, a.size.y - 12.0, a.size.x, 12), 12.0, Color.WHITE, UIKit.INK)
+		PixelArt.draw_car(a, Vector2(20, 30), 10.0, Color(str(team["color"])), Color(str(team["color2"])))))
+	_card_overall = UIKit.label("", 64, UIKit.WARM)
+	_card_overall.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	left.add_child(_card_overall)
+	var hint := UIKit.label("EVERY PART AND SETUP CHANGE MOVES THESE NUMBERS", 13, UIKit.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(300, 0)
+	left.add_child(hint)
+	_card_list = VBoxContainer.new()
+	_card_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_list.add_theme_constant_override("separation", 6)
+	body.add_child(_card_list)
 
 
-## Bodywork choice for the chassis: a grid of body sets.
+func _refresh_car_card() -> void:
+	if _card_list == null:
+		return
+	for child in _card_list.get_children():
+		child.queue_free()
+	var card := CarRatings.compute(GameManager.setup, _stats)
+	_card_overall.text = "OVR %d" % int(card["overall"])
+	for r: Array in card["ratings"]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		_card_list.add_child(row)
+		var name := UIKit.label(str(r[0]), 17)
+		name.custom_minimum_size = Vector2(220, 0)
+		row.add_child(name)
+		var value := int(r[1])
+		row.add_child(Art.make(Vector2(300, 26), func(a: Control) -> void:
+			a.draw_rect(Rect2(0, 6, a.size.x, 14), UIKit.GRID_BOLD)
+			a.draw_rect(Rect2(0, 6, a.size.x * value / 99.0, 14), UIKit.GOOD if value >= 75 else (UIKit.LINE if value >= 55 else UIKit.BAD))))
+		row.add_child(UIKit.label("%d" % value, 22))
+		var detail := UIKit.label("%s  ·  %s" % [r[2], r[3]], 13, UIKit.TEXT_DIM)
+		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		detail.clip_text = true
+		row.add_child(detail)
+
+
 func _add_body_picker(parent: Control) -> void:
 	var cell := VBoxContainer.new()
 	cell.add_theme_constant_override("separation", 4)
@@ -325,7 +368,7 @@ func _refresh_all() -> void:
 	var setup := GameManager.setup
 	_stats = CarStats.compute(setup, _config)
 	_workspace.refresh(_stats)
-	_stats_panel.refresh(_stats, setup)
+	_refresh_car_card()
 	_money_label.text = UIKit.money(GameManager.money())
 	if Career.active():
 		# Research points and the R&D level that unlocks parts, always in view.

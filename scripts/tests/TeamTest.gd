@@ -19,6 +19,16 @@ func _ready() -> void:
 	AudioServer.set_bus_mute(0, true)
 	Career.new_career("wil", {"name": "TEST", "look": PixelArt.default_look()})
 	var c := Career.state()
+	# --- calendar, practice and form
+	_check(Career.today() == 0 and Career.date_text().contains("MAR"), "season starts %s" % Career.date_text())
+	var moved := Career.sim_ahead("race")
+	_check(Career.day_event()["type"] == "race" and not Career.next_day(), "sim to the next race stops on race day after %d days (%s)" % [moved, Career.date_text()])
+	Career.state()["date"] = Career.race_day(0) - 2
+	_check(Career.day_event()["type"] == "practice", "Friday before the race is practice")
+	var reserve_id: String = Career.reserves()[0]
+	var rows := Career.run_practice("rookie", [Career.lineup()[0], reserve_id])
+	_check(rows.size() == 2 and Career.practice_done() and not (Career.driver(reserve_id).get("log", []) as Array).is_empty(), "practice ran with a reserve: %s P%d, %s P%d" % [rows[0]["name"], int(rows[0]["position"]), rows[1]["name"], int(rows[1]["position"])])
+	Career.state()["date"] = 0
 	# --- engineers and research
 	_check(Career.engineers().size() == 3 and Career.engineer_market().size() >= 15, "3 engineers on staff, %d on the market" % Career.engineer_market().size())
 	var before := int(Career.research_income()["total"])
@@ -79,6 +89,11 @@ func _ready() -> void:
 		Career.auto_strategy(sim)
 		sim.step()
 	var report := Career.apply_race(sim.cars, sim.flags)
+	var logged := 0
+	for id: String in Career.state()["drivers"]:
+		if not (Career.driver(id).get("log", []) as Array).is_empty():
+			logged += 1
+	_check(logged >= 20, "form recorded for %d drivers after the race" % logged)
 	var thrown := false
 	for m: Dictionary in report["mine"]:
 		if m["id"] == d0["id"] and (m.get("dsq", false) or m["dnf"]):

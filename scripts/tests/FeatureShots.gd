@@ -58,6 +58,14 @@ func _ui() -> void:
 	await _shot("b_drivers")
 	HubPanels.driver_card(hub, Career.lineup()[0])
 	await _shot("c_driver_card")
+	HubPanels.training_screen(hub, Career.lineup()[0])
+	await _shot("c_training")
+	Career.state()["date"] = Career.race_day(0) - 2
+	HubPanels.practice_sheet(hub)
+	await _shot("c_practice")
+	hub.call("_close_modal")
+	hub.call("_show_tab", 0)
+	await _shot("c_hq_practice_day")
 	HubPanels.manager_card(hub)
 	await _shot("c_manager_card")
 	hub.call("_close_modal")
@@ -104,6 +112,10 @@ func _ui() -> void:
 	await _shot("g_raceday")
 	var garage := await _goto("res://scenes/Garage.tscn")
 	await _shot("h_garage")
+	garage.call("_refresh_car_card")
+	(garage.get("_details") as Control).visible = true
+	await _shot("h_car_card")
+	(garage.get("_details") as Control).visible = false
 	(garage.get("_workshop") as WorkshopUI).open()
 	await _shot("h_workshop")
 	(garage.get("_workshop") as WorkshopUI).visible = false

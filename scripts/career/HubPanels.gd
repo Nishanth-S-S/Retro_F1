@@ -63,8 +63,9 @@ static func grid(parent: Control) -> HFlowContainer:
 
 # ---------------------------------------------------------------- full-screen frame
 
-## Full-screen card view. Returns [top row, body]; the close button sits at the bottom.
-static func open_full(hub: Control, title: String, color: Color) -> Array:
+## Full-screen card view with a BACK button in the top left. Returns [top row, body].
+## `back` defaults to returning to the hub page.
+static func open_full(hub: Control, title: String, color: Color, back: Callable = Callable()) -> Array:
 	hub._close_modal()
 	var modal := Control.new()
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -82,7 +83,19 @@ static func open_full(hub: Control, title: String, color: Color) -> Array:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 10)
 	margin.add_child(root)
-	root.add_child(UIKit.title_bar(title, 54.0))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	root.add_child(head)
+	var back_button := UIKit.button("<-  BACK", 18)
+	back_button.custom_minimum_size = Vector2(150, 54)
+	back_button.pressed.connect(func() -> void:
+		if back.is_valid():
+			back.call()
+		else:
+			hub._close_modal()
+			hub._show_tab(hub._tab))
+	head.add_child(press_anim(back_button))
+	head.add_child(UIKit.title_bar(title, 54.0))
 	var band := ColorRect.new()
 	band.color = color
 	band.custom_minimum_size = Vector2(0, 6)
@@ -98,12 +111,6 @@ static func open_full(hub: Control, title: String, color: Color) -> Array:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 20)
 	body.add_child(top)
-	var close := UIKit.button("CLOSE", 20, true)
-	close.custom_minimum_size = Vector2(0, 62)
-	close.pressed.connect(func() -> void:
-		hub._close_modal()
-		hub._show_tab(hub._tab))
-	root.add_child(close)
 	return [top, body]
 
 
@@ -125,11 +132,11 @@ static func _column(parent: Control, width: float = 0.0) -> VBoxContainer:
 
 static func _action(parent: Control, text: String, accent: bool, action: Callable, disabled: bool = false) -> Button:
 	var b := UIKit.button(text, 17, accent)
-	b.custom_minimum_size = Vector2(0, 58)
+	b.custom_minimum_size = Vector2(0, 62)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.disabled = disabled
 	b.pressed.connect(action)
-	parent.add_child(b)
+	parent.add_child(press_anim(b))
 	return b
 
 
@@ -205,29 +212,25 @@ static func driver_card(hub: Control, id: String, note: String = "") -> void:
 			_action(right, "%s   FIT %s%s" % [car["name"], str(fit) if level >= 3 else "??", "   (DRIVES IT)" if has else ""], has, func() -> void:
 				Career.assign_car(id, car_id)
 				driver_card(hub, id), has)
-	# --- development (your drivers)
-	if mine:
-		var dev := Frame.make("DEVELOPMENT", 8)
-		body.add_child(dev)
-		var rate := Career.development_rate(d)
-		hub._text(dev.body, "LAST RACE %+d OVR   ·   THIS SEASON %+.1f PACE   ·   ABOUT %+.2f PACE A RACE AT THIS RATE" % [int(d.get("last_gain", 0)), float(d.get("season_gain", 0.0)), rate], 16)
-		var train := HBoxContainer.new()
-		train.add_theme_constant_override("separation", 8)
-		dev.body.add_child(train)
-		for i in Career.TRAINING_NAMES.size():
-			var b := UIKit.button("%s\n%s FITNESS" % [Career.TRAINING_NAMES[i], "%+d" % Career.TRAINING_FITNESS[i]], 15, Career.training(id) == i)
-			b.custom_minimum_size = Vector2(0, 64)
-			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			b.pressed.connect(func() -> void:
-				Career.set_training(id, i)
-				driver_card(hub, id))
-			train.add_child(b)
-		var sim_on: bool = d.get("sim", false)
-		_action(dev.body, "SIMULATOR PROGRAMME: %s   (%s A RACE, FASTER LEARNING, NO FITNESS COST)" % ["ON" if sim_on else "OFF", UIKit.money(Career.SIMULATOR_COST)], sim_on, func() -> void:
-			d["sim"] = not sim_on
-			GameManager.save()
-			driver_card(hub, id))
-		hub._text(dev.body, "Young drivers far from their potential improve fastest. Racing teaches more than the bench, points finishes more than retirements, and a star team-mate mentors a youngster. Below 40 fitness a driver can break down.", 13, UIKit.TEXT_DIM)
+	# --- recent form: what the in-season rating updates are based on
+	var log: Array = d.get("log", [])
+	var form := Frame.make("RECENT FORM", 6)
+	body.add_child(form)
+	if log.is_empty():
+		hub._text(form.body, "NO RACES OR PRACTICE YET THIS SEASON", 16, UIKit.TEXT_DIM)
+	else:
+		var strip := HBoxContainer.new()
+		strip.add_theme_constant_override("separation", 6)
+		form.body.add_child(strip)
+		for entry: Dictionary in log:
+			var score := float(entry["s"])
+			var tag := str(entry["r"])
+			strip.add_child(Art.make(Vector2(110, 56), func(a: Control) -> void:
+				a.draw_rect(Rect2(Vector2.ZERO, a.size), UIKit.GOOD if score > 0.3 else (UIKit.BAD if score < -0.3 else Color("6a7078")))
+				a.draw_rect(Rect2(Vector2.ZERO, a.size), UIKit.INK, false, 2.0)
+				a.draw_string(UIKit.font(), Vector2(0, 26), tag, HORIZONTAL_ALIGNMENT_CENTER, a.size.x, 18, Color.WHITE)
+				a.draw_string(UIKit.font(), Vector2(0, 46), "%+.1f" % score, HORIZONTAL_ALIGNMENT_CENTER, a.size.x, 13, Color.WHITE)))
+		hub._text(form.body, "RATING CHANGE FROM FORM THIS SEASON: %+d OVR" % int(d.get("form_change", 0)), 15, UIKit.TEXT_DIM)
 	# --- what you can do
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 10)
@@ -242,11 +245,21 @@ static func driver_card(hub: Control, id: String, note: String = "") -> void:
 			hub._close_modal()
 			hub._say("%s released." % d["name"])
 			hub._show_tab(TAB_DRIVERS))
+		_action(actions, "ADJUST", false, func() -> void: training_screen(hub, id))
 	elif racing:
 		for r: String in Career.reserves():
 			_action(actions, "BENCH FOR %s" % str(Career.driver(r)["name"]).get_slice(" ", 1).to_upper(), false, func() -> void:
 				var error := Career.promote_reserve(r, id)
 				driver_card(hub, id, "MOVED TO THE BENCH" if error == "" else error))
+		_action(actions, "RELEASE", false, func() -> void:
+			var error := Career.release_driver(id)
+			if error != "":
+				driver_card(hub, id, error)
+				return
+			hub._close_modal()
+			hub._say("%s released." % d["name"])
+			hub._show_tab(TAB_DRIVERS))
+		_action(actions, "ADJUST", false, func() -> void: training_screen(hub, id))
 	elif str(d["team"]) == "":
 		if level < 3:
 			_action(actions, "SCOUT  %s" % UIKit.money(Career.scout_cost(d)), false, func() -> void:
@@ -260,6 +273,83 @@ static func driver_card(hub: Control, id: String, note: String = "") -> void:
 			var error := Career.sign_driver(id, "reserve")
 			driver_card(hub, id, "SIGNED  -  ON YOUR BENCH, RACE THEM FROM HERE" if error == "" else error))
 	AudioManager.play("click", -10.0)
+
+
+# ---------------------------------------------------------------- training (ADJUST)
+
+## How hard a driver trains between races, full screen.
+static func training_screen(hub: Control, id: String) -> void:
+	var d := Career.driver(id)
+	var color := _team_color(str(d["team"]))
+	var made := open_full(hub, "TRAINING  ·  %s" % str(d["name"]).get_slice(" ", 1).to_upper(), color, func() -> void: driver_card(hub, id))
+	var top: HBoxContainer = made[0]
+	var body: VBoxContainer = made[1]
+	top.add_child(_portrait(Career.person(id)["look"], color, 160))
+	var info := _column(top)
+	hub._text(info, str(d["name"]).to_upper(), 26)
+	info.add_child(Art.rating_bar("FITNESS", Career.fitness(d), UIKit.GOOD if Career.fitness(d) >= 60 else UIKit.BAD, 520.0))
+	info.add_child(Art.rating_bar("MORALE", float(d["morale"]), UIKit.GOOD if int(d["morale"]) >= 45 else UIKit.BAD, 520.0))
+	hub._text(info, "OVR %d  ·  POTENTIAL %s  ·  ABOUT %+.2f PACE A RACE AT THIS SETTING" % [Career.driver_overall(d), str(Career.potential_overall(d)) if Career.scout_level(d) >= 3 else "??", Career.development_rate(d)], 16, UIKit.TEXT_DIM)
+	var notes := ["Recovery week: fitness and morale come back, little learning.", "The usual programme: steady learning, fitness holds.",
+		"Double sessions: faster learning, fitness drops race by race.", "Everything, every day: the fastest learning, but below 40 fitness they can break down."]
+	for i in Career.TRAINING_NAMES.size():
+		var chosen := Career.training(id) == i
+		_action(body, "%s   ·   LEARNING x%.1f   ·   FITNESS %+d   ·   MORALE %+d\n%s" % [Career.TRAINING_NAMES[i], Career.TRAINING_GAIN[i], Career.TRAINING_FITNESS[i], Career.TRAINING_MORALE[i], notes[i]], chosen, func() -> void:
+			Career.set_training(id, i)
+			training_screen(hub, id))
+	var sim_on: bool = d.get("sim", false)
+	_action(body, "SIMULATOR PROGRAMME: %s   ·   %s A RACE   ·   EXTRA LEARNING, NO FITNESS COST" % ["ON" if sim_on else "OFF", UIKit.money(Career.SIMULATOR_COST)], sim_on, func() -> void:
+		d["sim"] = not sim_on
+		GameManager.save()
+		training_screen(hub, id))
+	hub._text(body, "Racing teaches more than training: points finishes count most. Young drivers learn fastest; a star team-mate mentors a youngster.", 14, UIKit.TEXT_DIM)
+
+
+# ---------------------------------------------------------------- practice
+
+## Practice and test days: choose a programme and up to two drivers (reserves too), then
+## run the session - or drive it yourself.
+static func practice_sheet(hub: Control, results: Array = []) -> void:
+	var event := Career.day_event()
+	var made := open_full(hub, "TEST DAY" if event["type"] == "test" else "FREE PRACTICE", UIKit.LINE)
+	var body: VBoxContainer = made[1]
+	if not results.is_empty():
+		hub._text(body, "SESSION OVER", 24)
+		for row: Dictionary in results:
+			hub._text(body, "P%d   %s   ·   %+.2f PACE" % [int(row["position"]), str(row["name"]).to_upper(), float(row["gain"])], 20)
+		hub._text(body, "Weekend bonuses and form are on the drivers' cards.", 15, UIKit.TEXT_DIM)
+		return
+	if not hub.has_meta("practice_program"):
+		hub.set_meta("practice_program", "setup")
+		hub.set_meta("practice_drivers", Career.lineup().duplicate())
+	var program: String = hub.get_meta("practice_program")
+	var chosen: Array = hub.get_meta("practice_drivers")
+	hub._text(body, "PROGRAMME", 14, UIKit.HOT)
+	for key: String in Career.PRACTICE_PROGRAMS:
+		var p: Dictionary = Career.PRACTICE_PROGRAMS[key]
+		_action(body, "%s\n%s" % [p["name"], p["note"]], key == program, func() -> void:
+			hub.set_meta("practice_program", key)
+			practice_sheet(hub))
+	hub._text(body, "DRIVERS  (UP TO TWO CARS)", 14, UIKit.HOT)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	body.add_child(row)
+	for id: String in Career.lineup() + Career.reserves():
+		var on := chosen.has(id)
+		var d := Career.driver(id)
+		_action(row, "%s\n%s" % [str(d["name"]).get_slice(" ", 1).to_upper(), "RACE SEAT" if Career.lineup().has(id) else "RESERVE"], on, func() -> void:
+			if on:
+				chosen.erase(id)
+			elif chosen.size() < 2:
+				chosen.append(id)
+			practice_sheet(hub))
+	var go := HBoxContainer.new()
+	go.add_theme_constant_override("separation", 10)
+	body.add_child(go)
+	_action(go, "RUN THE SESSION", true, func() -> void:
+		practice_sheet(hub, Career.run_practice(program, chosen)), chosen.is_empty())
+	_action(go, "DRIVE IT YOURSELF  (%s)" % (str(Career.driver(chosen[0])["name"]).get_slice(" ", 1).to_upper() if not chosen.is_empty() else "-"), false, func() -> void:
+		Career.prepare_practice(chosen[0]), chosen.is_empty())
 
 
 # ---------------------------------------------------------------- staff and people
