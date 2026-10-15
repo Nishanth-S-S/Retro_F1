@@ -1,12 +1,16 @@
 extends Control
 ## Garage scene root. The screen is just the car: tap a part of it and the whole sidebar on
-## the left becomes the picker for that hardpoint. Four simple bars summarise the build; the full
-## car card - every rating and the overall - is one tap away under CAR CARD.
+## the left becomes the picker for that hardpoint. Everything is told as an overall rating, with
+## the raw stat in small grey text underneath. Research points develop parts and upgrade levels;
+## money never buys car parts.
 
 const PANEL_WIDTH := 410.0
 ## Which tuning slider belongs to which hardpoint.
 const SLOT_SLIDERS := {"front_wing": ["FRONT WING ANGLE"], "rear_wing": ["REAR WING ANGLE"], "brakes": ["BRAKE BIAS"], "ballast": ["BALLAST POSITION"],
 	"chassis": ["RIDE HEIGHT", "BODY SET"], "tires": ["TYRE PRESSURE"], "front_suspension": ["ANTI-ROLL BALANCE"], "rear_suspension": ["ANTI-ROLL BALANCE"]}
+
+## The five ratings in the sidebar summary (names from CarRatings).
+const SUMMARY: PackedStringArray = ["TOP SPEED", "ACCELERATION", "CORNERING", "BRAKING", "BALANCE"]
 
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _stats: CarStats
@@ -20,8 +24,11 @@ var _card_overall: Label
 var _drag: PartDragHandler
 var _popup: InfoPopup
 var _money_label: Label
-var _bars: Dictionary = {}
-var _balance: Label
+var _rows: Dictionary = {}
+var _ovr_label: Label
+var _upgrade_info: Label
+var _upgrade_button: Button
+var _cars_overlay: Control
 var _warning: Label
 var _overview: VBoxContainer
 var _picker: VBoxContainer
@@ -35,7 +42,6 @@ var _slider_values: Dictionary = {}
 var _slider_cells: Dictionary = {}
 var _drag_scroll := 0
 var _tunnel: WindTunnelUI
-var _workshop: WorkshopUI
 ## Sidebar widgets shown only while no hardpoint is selected.
 var _summary_nodes: Array[Control] = []
 var _marks: Dictionary = {}
@@ -66,21 +72,19 @@ func _ready() -> void:
 	add_child(_popup)
 	_tunnel = WindTunnelUI.new()
 	add_child(_tunnel)
-	_workshop = WorkshopUI.new()
-	add_child(_workshop)
 	EventBus.setup_changed.connect(_refresh_all)
 	EventBus.inventory_changed.connect(_refresh_all)
 	EventBus.money_changed.connect(func(_amount: int) -> void: _refresh_all())
+	EventBus.research_changed.connect(func(_amount: int) -> void: _refresh_all())
 	_show_picker("")
 	_refresh_all()
 	CoachMarks.run_once(self, "garage", func() -> Array:
 		var steps: Array = [
-			[_workspace, "This is your car. Tap any part of it - wings, engine, tyres - to swap the part or tune it."],
-			[_marks["card"], "The CAR CARD rates everything: power, cornering, braking, drag... Every change moves the overall."],
+			[_workspace, "This is your car. Tap any part of it - wings, engine, tyres - to swap it, upgrade it or tune it."],
+			[_marks["rp"], "RESEARCH POINTS develop new parts and upgrade levels. Money never buys car parts."],
+			[_marks["ovr"], "Everything is measured in OVERALL. Every part, upgrade and setup change moves it."],
 			[_marks["tunnel"], "The WIND TUNNEL shows your car in 3D and lights up its weakest areas."],
 		]
-		if _marks.has("workshop"):
-			steps.append([_marks["workshop"], "WORKSHOP: better materials, factory upgrades, R&D to unlock parts, and who drives which car."])
 		steps.append([_marks["test"], "TEST CAR takes it out on track so you can feel what you changed."])
 		return steps)
 
@@ -109,33 +113,21 @@ func _build_top_bar() -> void:
 	row.add_child(back)
 	row.add_child(UIKit.title_bar("GARAGE"))
 	if Career.active():
-		# Career teams can own several cars: tap to roll the next one into the bay.
+		# Career teams can own several cars: pick one, build another or scrap one.
 		_car_button = UIKit.button("", 13)
-		_car_button.custom_minimum_size = Vector2(210, 58)
-		_car_button.pressed.connect(func() -> void:
-			var cars := Career.cars()
-			var index := 0
-			for i in cars.size():
-				if cars[i]["id"] == Career.active_car()["id"]:
-					index = i
-			Career.set_active_car(str(cars[(index + 1) % cars.size()]["id"]))
-			_show_picker(""))
+		_car_button.custom_minimum_size = Vector2(230, 58)
+		_car_button.pressed.connect(_open_cars)
 		row.add_child(_car_button)
-		# Materials, factory, FIA check, who drives what, new cars.
-		var workshop := UIKit.button("WORKSHOP", 14, true)
-		_marks["workshop"] = workshop
-		workshop.custom_minimum_size = Vector2(130, 58)
-		workshop.pressed.connect(func() -> void: _workshop.open())
-		row.add_child(workshop)
 	var tunnel := UIKit.button("WIND\nTUNNEL", 13)
 	_marks["tunnel"] = tunnel
 	tunnel.custom_minimum_size = Vector2(110, 58)
 	tunnel.pressed.connect(func() -> void: _tunnel.open())
 	row.add_child(tunnel)
 	var cash := UIKit.panel(UIKit.PANEL, UIKit.LINE)
-	cash.custom_minimum_size = Vector2(190 if Career.active() else 150, 58)
+	_marks["rp"] = cash
+	cash.custom_minimum_size = Vector2(170, 58)
 	row.add_child(cash)
-	_money_label = UIKit.label(UIKit.money(GameManager.money()), 15 if Career.active() else 20, UIKit.GOOD)
+	_money_label = UIKit.label("", 20, UIKit.PURPLE)
 	_money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_money_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	cash.add_child(_money_label)
@@ -148,17 +140,18 @@ func _build_side_panel() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
-	# Always-visible summary: four bars and the handling verdict.
-	for term: String in ["TOP SPEED", "ACCELERATION", "CORNERING", "BRAKING"]:
-		var bar := StatBar.new()
-		bar.title = term
-		bar.custom_minimum_size = Vector2(0, 30)
-		box.add_child(bar)
-		_bars[term] = bar
-		_summary_nodes.append(bar)
-	_balance = UIKit.label("", 15, UIKit.GOOD)
-	box.add_child(_balance)
-	_summary_nodes.append(_balance)
+	# Summary (nothing selected): one big overall, then five ratings with the raw stat in grey.
+	_ovr_label = UIKit.label("", 40, UIKit.WARM)
+	_marks["ovr"] = _ovr_label
+	box.add_child(_ovr_label)
+	_summary_nodes.append(_ovr_label)
+	for term: String in SUMMARY:
+		var r := RatingRow.new()
+		r.title = term
+		r.custom_minimum_size = Vector2(0, 44)
+		box.add_child(r)
+		_rows[term] = r
+		_summary_nodes.append(r)
 	_warning = UIKit.label("", 13, UIKit.BAD)
 	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_warning)
@@ -167,7 +160,7 @@ func _build_side_panel() -> void:
 	_overview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_overview.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_child(_overview)
-	var tip := UIKit.label("TAP A PART\nTO CHANGE IT", 22, UIKit.TEXT_DIM)
+	var tip := UIKit.label("TAP A PART OF THE CAR TO CHANGE IT", 15, UIKit.TEXT_DIM)
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overview.add_child(tip)
@@ -185,6 +178,25 @@ func _build_side_panel() -> void:
 	close.custom_minimum_size = Vector2(120, 54)
 	close.pressed.connect(func() -> void: _show_picker(""))
 	head.add_child(close)
+	# Upgrade level for this part type: research points make every car's part better.
+	var up := HBoxContainer.new()
+	up.add_theme_constant_override("separation", 8)
+	_picker.add_child(up)
+	_upgrade_info = UIKit.label("", 15, UIKit.TEXT)
+	_upgrade_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_upgrade_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_upgrade_info.custom_minimum_size = Vector2(240, 0)
+	up.add_child(_upgrade_info)
+	_upgrade_button = UIKit.button("UPGRADE", 14, true)
+	_upgrade_button.custom_minimum_size = Vector2(120, 52)
+	_upgrade_button.pressed.connect(func() -> void:
+		if GameManager.upgrade_dev(CarSetup.SLOT_CATEGORY[_active_slot]):
+			AudioManager.play("snap", -5.0)
+			_workspace.snap_feedback(_active_slot)
+		else:
+			AudioManager.play("deny", -10.0))
+	up.add_child(_upgrade_button)
+	_marks["upgrade"] = up
 	_add_slider(_picker, "FRONT WING ANGLE", CarSetup.WING_ANGLE_MIN, CarSetup.WING_ANGLE_MAX, 1.0, func(v: float) -> void: GameManager.setup.front_wing_angle = int(v))
 	_add_slider(_picker, "REAR WING ANGLE", CarSetup.WING_ANGLE_MIN, CarSetup.WING_ANGLE_MAX, 1.0, func(v: float) -> void: GameManager.setup.rear_wing_angle = int(v))
 	_add_slider(_picker, "BRAKE BIAS", 0.48, 0.66, 0.01, func(v: float) -> void: GameManager.setup.brake_bias = v)
@@ -279,7 +291,7 @@ func _build_details() -> void:
 	_card_overall = UIKit.label("", 64, UIKit.WARM)
 	_card_overall.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left.add_child(_card_overall)
-	var hint := UIKit.label("EVERY PART AND SETUP CHANGE MOVES THESE NUMBERS", 13, UIKit.TEXT_DIM)
+	var hint := UIKit.label("EVERY PART, UPGRADE AND SETUP CHANGE MOVES THESE NUMBERS", 12, UIKit.TEXT_DIM)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.custom_minimum_size = Vector2(300, 0)
 	left.add_child(hint)
@@ -295,7 +307,11 @@ func _refresh_car_card() -> void:
 	for child in _card_list.get_children():
 		child.queue_free()
 	var card := CarRatings.compute(GameManager.setup, _stats)
-	_card_overall.text = "OVR %d" % int(card["overall"])
+	_card_overall.text = "OVR %d" % _ovr(GameManager.setup)
+	if Career.active():
+		var tunnel := float(Career.active_car().get("tunnel", 0.0)) * Career.TUNNEL_BONUS
+		if tunnel >= 0.5:
+			_card_list.add_child(UIKit.label("+%d OVR FROM WIND TUNNEL KNOWLEDGE" % int(round(tunnel)), 13, UIKit.GOOD))
 	for r: Array in card["ratings"]:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
@@ -307,8 +323,8 @@ func _refresh_car_card() -> void:
 		row.add_child(Art.make(Vector2(300, 26), func(a: Control) -> void:
 			a.draw_rect(Rect2(0, 6, a.size.x, 14), UIKit.GRID_BOLD)
 			a.draw_rect(Rect2(0, 6, a.size.x * value / 99.0, 14), UIKit.GOOD if value >= 75 else (UIKit.LINE if value >= 55 else UIKit.BAD))))
-		row.add_child(UIKit.label("%d" % value, 22))
-		var detail := UIKit.label("%s  ·  %s" % [r[2], r[3]], 13, UIKit.TEXT_DIM)
+		row.add_child(UIKit.label("%d" % value, 26))
+		var detail := UIKit.label("%s  ·  %s" % [r[2], r[3]], 12, UIKit.TEXT_DIM)
 		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		detail.clip_text = true
 		row.add_child(detail)
@@ -384,24 +400,18 @@ func _refresh_all() -> void:
 	_stats = CarStats.compute(setup, _config)
 	_workspace.refresh(_stats)
 	_refresh_car_card()
-	_money_label.text = UIKit.money(GameManager.money())
-	if Career.active():
-		# Research points and the R&D level that unlocks parts, always in view.
-		_money_label.text = "%s\n%d RP  ·  R&D %d" % [UIKit.money(GameManager.money()), int(Career.state()["rp"]), Career.rd_level()]
-	var g := VehiclePhysicsConfig.GRAVITY
-	(_bars["TOP SPEED"] as StatBar).set_value(inverse_lerp(200.0, 310.0, _stats.top_speed * 3.6), "%d km/h" % int(_stats.top_speed * 3.6))
-	(_bars["ACCELERATION"] as StatBar).set_value(inverse_lerp(250.0, 560.0, _stats.power_to_weight), "%d kW/t" % int(_stats.power_to_weight))
-	var cornering := _stats.mech_grip_g + _stats.downforce_200 / (_stats.mass * g) * 0.5
-	(_bars["CORNERING"] as StatBar).set_value(inverse_lerp(1.5, 2.4, cornering), "%.2f g" % cornering)
-	(_bars["BRAKING"] as StatBar).set_value(inverse_lerp(1.9, 3.3, _stats.braking_g), "%.2f g" % _stats.braking_g)
-	var label := _stats.balance_label()
-	_balance.text = "HANDLING:  %s" % label.to_upper()
-	_balance.add_theme_color_override("font_color", GarageUI.BALANCE_COLORS[CarStats.BALANCE_LABELS.find(label)])
+	_money_label.text = "%d RP\nRESEARCH" % GameManager.research()
+	var overall := _ovr(setup)
+	_ovr_label.text = "CAR OVR %d" % overall
+	var card := CarRatings.compute(setup, _stats)
+	for r: Array in card["ratings"]:
+		if _rows.has(r[0]):
+			(_rows[r[0]] as RatingRow).set_value(int(r[1]), str(r[2]))
 	var missing := BuildValidator.missing_labels(setup)
 	_warning.text = "" if missing.is_empty() else "CAR NOT READY  ·  missing %s" % ", ".join(missing)
 	if Career.active():
 		var car := Career.active_car()
-		_car_button.text = "%s  OVR %d\nCAR %d OF %d  >" % [car["name"], int(round(Career.car_overall(car))), Career.cars().find(car) + 1, Career.cars().size()]
+		_car_button.text = "%s  ·  OVR %d\nCAR %d OF %d  ·  CHANGE >" % [car["name"], overall, Career.cars().find(car) + 1, Career.cars().size()]
 		var faults := Career.car_violations(car)
 		if missing.is_empty() and not faults.is_empty():
 			_warning.text = "ILLEGAL UNDER FIA RULES  ·  %s" % "  ·  ".join(faults)
@@ -440,11 +450,59 @@ func _refresh_all() -> void:
 				slider.editable = has_ballast
 				var step := int(round(setup.ballast_position * (CarSetup.BALLAST_STEPS - 1)))
 				value.text = (["FRONT", "forward", "mid-front", "mid-rear", "rearward", "REAR"][step] if has_ballast else "fit ballast first")
-	for child in _list.get_children():
-		if child is PartCard:
-			(child as PartCard).is_selected = (child as PartCard).part == _selected_part
-			(child as PartCard).refresh()
+		if term != "BODY SET":
+			value.text += "  ·  OVR %d" % overall
+	_refresh_cards(overall)
+	_refresh_upgrade(overall)
 	_refresh_detail()
+
+
+## The overall shown everywhere in the garage: the career car overall, or the car card's
+## overall in free play.
+func _ovr(setup: CarSetup) -> int:
+	if Career.active():
+		return int(round(Career.overall_for(setup)))
+	return int(CarRatings.compute(setup, CarStats.compute(setup, _config))["overall"])
+
+
+## What fitting each listed part would do to the overall.
+func _refresh_cards(overall: int) -> void:
+	for child in _list.get_children():
+		if not child is PartCard:
+			continue
+		var card := child as PartCard
+		card.is_selected = card.part == _selected_part
+		var trial := CarSetup.from_dict(GameManager.setup.to_dict())
+		if _active_slot != "":
+			trial.install(_active_slot, card.part.id)
+		var after := _ovr(trial)
+		card.ovr_delta = after - overall
+		card.ovr_line = ("OVR %d" % overall) if GameManager.setup.parts.get(_active_slot, "") == card.part.id else "OVR %d -> %d" % [overall, after]
+		card.refresh()
+
+
+func _refresh_upgrade(overall: int) -> void:
+	if _active_slot == "":
+		return
+	var category: String = CarSetup.SLOT_CATEGORY[_active_slot]
+	var has_levels := GameManager.DEV_CATEGORIES.has(category)
+	(_marks["upgrade"] as Control).visible = has_levels
+	if not has_levels:
+		return
+	var level := GameManager.dev_level(category)
+	var cost := GameManager.dev_cost(category)
+	if cost <= 0:
+		_upgrade_info.text = "LEVEL %d  ·  MAXED OUT" % level
+		_upgrade_button.disabled = true
+		_upgrade_button.text = "MAX"
+		return
+	var trial := CarSetup.from_dict(GameManager.setup.to_dict())
+	trial.dev = GameManager.setup.dev.duplicate()
+	trial.dev[category] = level + 1
+	var gain := _ovr(trial) - overall
+	_upgrade_info.text = "UPGRADE  LEVEL %d -> %d  ·  OVR %+d\n%s" % [level, level + 1, gain, GameManager.DEV_EFFECTS[category]]
+	_upgrade_button.text = "%d RP" % cost
+	_upgrade_button.disabled = GameManager.research() < cost
 
 
 func _refresh_detail() -> void:
@@ -472,6 +530,7 @@ func _show_picker(slot: String) -> void:
 	for term: String in _slider_cells:
 		(_slider_cells[term] as Control).visible = (SLOT_SLIDERS.get(slot, []) as Array).has(term)
 	_rebuild_list()
+	_refresh_upgrade(_ovr(GameManager.setup))
 	_refresh_detail()
 
 
@@ -480,7 +539,7 @@ func _rebuild_list() -> void:
 		_list.remove_child(child)
 		child.queue_free()
 	var parts := PartDB.parts_in(CarSetup.SLOT_CATEGORY[_active_slot]).duplicate()
-	# Owned parts first, then purchasable, then story-locked.
+	# Owned parts first, then the cheapest research.
 	parts.sort_custom(func(a: VehiclePart, b: VehiclePart) -> bool: return _rank(a) < _rank(b))
 	for part: VehiclePart in parts:
 		var card := (load("res://scenes/components/PartCard.tscn") as PackedScene).instantiate() as PartCard
@@ -494,12 +553,13 @@ func _rebuild_list() -> void:
 			_drag.move(pos))
 		card.drag_released.connect(func(pos: Vector2) -> void: _drag.release(pos))
 	_scroll.scroll_vertical = 0
+	_refresh_cards(_ovr(GameManager.setup))
 
 
 func _rank(part: VehiclePart) -> int:
 	if GameManager.is_owned(part.id):
 		return 0
-	return 1 if GameManager.is_unlocked(part.id) else 2 + GameManager.unlock_chapter_of(part.id)
+	return 1 + GameManager.research_cost(part.id)
 
 
 # ---------------------------------------------------------------- interaction
@@ -521,12 +581,10 @@ func _on_card_selected(part: VehiclePart) -> void:
 
 func _on_card_action(part: VehiclePart) -> void:
 	_selected_part = part
-	if not GameManager.is_unlocked(part.id):
-		AudioManager.play("deny", -10.0)
-	elif not GameManager.is_owned(part.id):
-		if GameManager.buy_part(part.id):
+	if not GameManager.is_owned(part.id):
+		if GameManager.unlock_part(part.id):
 			AudioManager.play("cash", -6.0)
-			# Buying from a hardpoint's picker fits the part straight away.
+			# Researching from a hardpoint's picker fits the part straight away.
 			_install(part, _active_slot)
 		else:
 			AudioManager.play("deny", -10.0)
@@ -564,36 +622,110 @@ func _launch(mode: String) -> void:
 	GameManager.start_free_session(mode)
 
 
-## One labelled bar that animates and flashes green / red when the build changes.
-class StatBar extends Control:
+## Career car list: switch car, build another (money) or scrap one.
+func _open_cars() -> void:
+	if _cars_overlay:
+		_cars_overlay.queue_free()
+	_cars_overlay = Control.new()
+	_cars_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_cars_overlay)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.6)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed:
+			_close_cars())
+	_cars_overlay.add_child(shade)
+	var panel := UIKit.panel()
+	_place(panel, 0.5, 0.5, 0.5, 0.5, -300, -190, 300, 190)
+	_cars_overlay.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	box.add_child(UIKit.label("YOUR CARS", 24, UIKit.HOT))
+	var note := UIKit.label("", 13, UIKit.BAD)
+	for c: Dictionary in Career.cars():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		box.add_child(row)
+		var active: bool = c["id"] == Career.active_car()["id"]
+		var pick := UIKit.button("%s  ·  OVR %d%s" % [c["name"], int(round(Career.car_overall(c))), "  (IN GARAGE)" if active else ""], 15, active)
+		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pick.custom_minimum_size = Vector2(0, 50)
+		var id := str(c["id"])
+		pick.pressed.connect(func() -> void:
+			Career.set_active_car(id)
+			_close_cars()
+			_show_picker(""))
+		row.add_child(pick)
+		var scrap := UIKit.button("SCRAP", 13)
+		scrap.custom_minimum_size = Vector2(90, 50)
+		scrap.disabled = Career.cars().size() <= 1
+		scrap.pressed.connect(func() -> void:
+			Career.scrap_car(id)
+			_open_cars()
+			_show_picker(""))
+		row.add_child(scrap)
+	var build := UIKit.button("BUILD NEW CAR  ·  %s" % Career.money_text(Career.NEW_CAR_COST), 16, true)
+	build.custom_minimum_size = Vector2(0, 54)
+	build.pressed.connect(func() -> void:
+		var why := Career.build_new_car()
+		if why == "":
+			AudioManager.play("cash", -6.0)
+			_open_cars()
+			_show_picker("")
+		else:
+			note.text = why
+			AudioManager.play("deny", -10.0))
+	box.add_child(build)
+	box.add_child(note)
+	var hint := UIKit.label("A new car is a copy of the one in the garage. Choose who drives which car on the driver card.", 12, UIKit.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hint)
+	var close := UIKit.button("CLOSE", 15)
+	close.custom_minimum_size = Vector2(0, 46)
+	close.pressed.connect(_close_cars)
+	box.add_child(close)
+
+
+func _close_cars() -> void:
+	if _cars_overlay:
+		_cars_overlay.queue_free()
+		_cars_overlay = null
+
+
+## One rating: name, a big number and a bar, with the raw stat in small grey text below.
+## Flashes green / red when the build changes it.
+class RatingRow extends Control:
 	var title := ""
-	var _target := 0.0
+	var _value := 0
 	var _shown := 0.0
 	var _text := ""
 	var _flash := 0.0
 	var _flash_color := UIKit.GOOD
 	var _initialised := false
 
-	func set_value(fraction: float, text: String) -> void:
-		var f := clampf(fraction, 0.03, 1.0)
-		if _initialised and absf(f - _target) > 0.002:
+	func set_value(value: int, text: String) -> void:
+		if _initialised and value != _value:
 			_flash = 1.0
-			_flash_color = UIKit.GOOD if f > _target else UIKit.BAD
+			_flash_color = UIKit.GOOD if value > _value else UIKit.BAD
 		if not _initialised:
-			_shown = f
+			_shown = value
 		_initialised = true
-		_target = f
+		_value = value
 		_text = text
 
 	func _process(delta: float) -> void:
-		_shown = lerpf(_shown, _target, minf(1.0, 9.0 * delta))
+		_shown = lerpf(_shown, _value, minf(1.0, 9.0 * delta))
 		_flash = maxf(0.0, _flash - delta * 1.2)
 		queue_redraw()
 
 	func _draw() -> void:
 		var font := get_theme_default_font()
-		draw_string(font, Vector2(0, 12), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.TEXT_DIM)
-		draw_string(font, Vector2(0, 12), _text, HORIZONTAL_ALIGNMENT_RIGHT, size.x, 13, UIKit.TEXT.lerp(_flash_color, _flash))
-		var bar := Rect2(0.0, 18.0, size.x, 9.0)
+		var col := UIKit.TEXT.lerp(_flash_color, _flash)
+		draw_string(font, Vector2(0, 16), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIKit.TEXT)
+		draw_string(font, Vector2(0, 22), "%d" % _value, HORIZONTAL_ALIGNMENT_RIGHT, size.x, 24, col)
+		var bar := Rect2(150.0, 9.0, size.x - 200.0, 9.0)
 		draw_rect(bar, UIKit.GRID_BOLD)
-		draw_rect(Rect2(bar.position, Vector2(bar.size.x * _shown, bar.size.y)), UIKit.ACCENT.lerp(_flash_color, _flash))
+		draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(_shown / 99.0, 0.03, 1.0), bar.size.y)), UIKit.ACCENT.lerp(_flash_color, _flash))
+		draw_string(font, Vector2(0, 38), _text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UIKit.TEXT_DIM)

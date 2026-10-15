@@ -47,6 +47,12 @@ var tyre_pressure := 5
 ## -5 = soft front / stiff rear (more oversteer) .. +5 = stiff front (more understeer).
 var anti_roll := 0
 var body := "modern"
+## Upgrade levels per part type (see GameManager.DEV_CATEGORIES). Empty for rival cars.
+var dev: Dictionary = {}
+
+
+func level(category: String) -> int:
+	return int(dev.get(category, 0))
 
 
 func part(slot: String) -> VehiclePart:
@@ -91,6 +97,7 @@ func to_dict() -> Dictionary:
 		"tyre_pressure": tyre_pressure,
 		"anti_roll": anti_roll,
 		"body": body,
+		"dev": dev.duplicate(),
 	}
 
 
@@ -110,4 +117,6 @@ static func from_dict(data: Dictionary) -> CarSetup:
 	setup.tyre_pressure = clampi(int(data.get("tyre_pressure", 5)), 1, 10)
 	setup.anti_roll = clampi(int(data.get("anti_roll", 0)), -5, 5)
 	setup.body = str(data.get("body", "modern")) if BODY_SETS.has(str(data.get("body", "modern"))) else "modern"
+	var levels: Variant = data.get("dev", {})
+	setup.dev = (levels as Dictionary).duplicate() if levels is Dictionary else {}
 	return setup

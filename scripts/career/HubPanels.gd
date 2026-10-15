@@ -311,7 +311,7 @@ static func training_screen(hub: Control, id: String) -> void:
 ## run the session - or drive it yourself.
 static func practice_sheet(hub: Control, results: Array = []) -> void:
 	var event := Career.day_event()
-	var made := open_full(hub, "TEST DAY" if event["type"] == "test" else "FREE PRACTICE", UIKit.LINE)
+	var made := open_full(hub, "FREE PRACTICE" if event.get("free_practice", false) else "PRACTICE DAY", UIKit.LINE)
 	var body: VBoxContainer = made[1]
 	if not results.is_empty():
 		hub._text(body, "SESSION OVER", 24)
@@ -354,6 +354,41 @@ static func practice_sheet(hub: Control, results: Array = []) -> void:
 		Career.skip_practice()
 		hub._close_modal()
 		hub._show_tab(hub._tab))
+
+
+# ---------------------------------------------------------------- recovery days
+
+## Recovery day: one technique per driver (race seats and reserves), then confirm.
+static func rest_sheet(hub: Control) -> void:
+	var made := open_full(hub, "RECOVERY DAY", UIKit.GOOD)
+	var body: VBoxContainer = made[1]
+	if not hub.has_meta("rest_choices") or int(hub.get_meta("rest_for", -1)) != Career.today():
+		var fresh := {}
+		for id: String in Career.lineup() + Career.reserves():
+			fresh[id] = "physio"
+		hub.set_meta("rest_choices", fresh)
+		hub.set_meta("rest_for", Career.today())
+	var choices: Dictionary = hub.get_meta("rest_choices")
+	for id: String in Career.lineup() + Career.reserves():
+		var d := Career.driver(id)
+		var frame := Frame.make("%s  ·  FITNESS %d  ·  MORALE %d" % [str(d["name"]).to_upper(), Career.fitness(d), int(d["morale"])], 4)
+		body.add_child(frame)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		frame.body.add_child(row)
+		for key: String in Career.RECOVERY:
+			var r: Dictionary = Career.RECOVERY[key]
+			var b := _action(row, "%s\n%s" % [r["name"], r["note"]], choices.get(id, "") == key, func() -> void:
+				choices[id] = key
+				rest_sheet(hub))
+			b.add_theme_font_size_override("font_size", 14)
+			b.custom_minimum_size = Vector2(0, 56)
+			b.size_flags_stretch_ratio = 1.0
+	_action(body, "CONFIRM RECOVERY", true, func() -> void:
+		Career.apply_rest(choices)
+		hub._close_modal()
+		hub._say("Recovery done.")
+		hub._show_tab(0))
 
 
 # ---------------------------------------------------------------- staff and people

@@ -14,8 +14,8 @@ var cooling_rate := 1.0
 var temperature := AMBIENT_TEMP
 
 
-func configure(part: VehiclePart, bias: float) -> void:
-	max_force = part.stat("max_brake_force", 16500.0)
+func configure(part: VehiclePart, bias: float, force_scale: float = 1.0) -> void:
+	max_force = part.stat("max_brake_force", 16500.0) * force_scale
 	heat_capacity = part.stat("heat_capacity", 1.0)
 	cooling_rate = part.stat("cooling_rate", 1.0)
 	front_bias = bias

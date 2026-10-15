@@ -1,10 +1,154 @@
 [
-  {"id": "engine_compact_4", "display_name": "Compact 4", "description": "Light, frugal and eager. Not much shove, but it barely upsets the car's balance.", "price": 0, "research_cost": 0, "mass": 92,
-   "stats": {"power_kw": 215, "redline_rpm": 9500, "idle_rpm": 1600, "fuel_efficiency": 1.15, "heat_generation": 0.85, "throttle_response": 1.0, "torque_curve": [[0.15, 0.62], [0.45, 0.9], [0.68, 1.0], [0.88, 0.94], [1.0, 0.84]]}},
-  {"id": "engine_balanced_6", "display_name": "Balanced 6", "description": "A well-rounded six. More power everywhere, at the cost of extra kilos over the rear axle.", "price": 9000, "research_cost": 0, "mass": 118,
-   "stats": {"power_kw": 285, "redline_rpm": 10000, "idle_rpm": 1700, "fuel_efficiency": 1.0, "heat_generation": 1.0, "throttle_response": 0.8, "torque_curve": [[0.15, 0.6], [0.4, 0.88], [0.62, 1.0], [0.85, 0.95], [1.0, 0.83]]}},
-  {"id": "engine_turbo_6", "display_name": "Turbo 6", "description": "Huge mid-range punch. Heavy, thirsty, runs hot and the boost arrives late - mind your right thumb.", "price": 16000, "research_cost": 40, "mass": 146,
-   "stats": {"power_kw": 370, "redline_rpm": 9000, "idle_rpm": 1700, "fuel_efficiency": 0.78, "heat_generation": 1.38, "throttle_response": 0.45, "torque_curve": [[0.15, 0.4], [0.35, 0.72], [0.5, 1.0], [0.8, 0.98], [1.0, 0.8]]}},
-  {"id": "engine_high_output_8", "display_name": "High Output 8", "description": "A screaming naturally aspirated eight. Sharp response and a tall rev range, but it needs revs and carries weight.", "price": 14000, "research_cost": 30, "mass": 138,
-   "stats": {"power_kw": 335, "redline_rpm": 11000, "idle_rpm": 1900, "fuel_efficiency": 0.86, "heat_generation": 1.2, "throttle_response": 0.95, "torque_curve": [[0.15, 0.5], [0.45, 0.8], [0.72, 1.0], [0.9, 0.97], [1.0, 0.88]]}}
+ {
+  "id": "engine_compact_4",
+  "display_name": "Compact 4",
+  "description": "Light, frugal and eager. Not much shove, but it barely upsets the car's balance.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 92,
+  "stats": {
+   "power_kw": 215,
+   "redline_rpm": 9500,
+   "idle_rpm": 1600,
+   "fuel_efficiency": 1.15,
+   "heat_generation": 0.85,
+   "throttle_response": 1.0,
+   "torque_curve": [
+    [
+     0.15,
+     0.62
+    ],
+    [
+     0.45,
+     0.9
+    ],
+    [
+     0.68,
+     1.0
+    ],
+    [
+     0.88,
+     0.94
+    ],
+    [
+     1.0,
+     0.84
+    ]
+   ]
+  }
+ },
+ {
+  "id": "engine_balanced_6",
+  "display_name": "Balanced 6",
+  "description": "A well-rounded six. More power everywhere, at the cost of extra kilos over the rear axle.",
+  "price": 9000,
+  "research_cost": 60,
+  "mass": 118,
+  "stats": {
+   "power_kw": 285,
+   "redline_rpm": 10000,
+   "idle_rpm": 1700,
+   "fuel_efficiency": 1.0,
+   "heat_generation": 1.0,
+   "throttle_response": 0.8,
+   "torque_curve": [
+    [
+     0.15,
+     0.6
+    ],
+    [
+     0.4,
+     0.88
+    ],
+    [
+     0.62,
+     1.0
+    ],
+    [
+     0.85,
+     0.95
+    ],
+    [
+     1.0,
+     0.83
+    ]
+   ]
+  }
+ },
+ {
+  "id": "engine_turbo_6",
+  "display_name": "Turbo 6",
+  "description": "Huge mid-range punch. Heavy, thirsty, runs hot and the boost arrives late - mind your right thumb.",
+  "price": 16000,
+  "research_cost": 107,
+  "mass": 146,
+  "stats": {
+   "power_kw": 370,
+   "redline_rpm": 9000,
+   "idle_rpm": 1700,
+   "fuel_efficiency": 0.78,
+   "heat_generation": 1.38,
+   "throttle_response": 0.45,
+   "torque_curve": [
+    [
+     0.15,
+     0.4
+    ],
+    [
+     0.35,
+     0.72
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.8,
+     0.98
+    ],
+    [
+     1.0,
+     0.8
+    ]
+   ]
+  }
+ },
+ {
+  "id": "engine_high_output_8",
+  "display_name": "High Output 8",
+  "description": "A screaming naturally aspirated eight. Sharp response and a tall rev range, but it needs revs and carries weight.",
+  "price": 14000,
+  "research_cost": 93,
+  "mass": 138,
+  "stats": {
+   "power_kw": 335,
+   "redline_rpm": 11000,
+   "idle_rpm": 1900,
+   "fuel_efficiency": 0.86,
+   "heat_generation": 1.2,
+   "throttle_response": 0.95,
+   "torque_curve": [
+    [
+     0.15,
+     0.5
+    ],
+    [
+     0.45,
+     0.8
+    ],
+    [
+     0.72,
+     1.0
+    ],
+    [
+     0.9,
+     0.97
+    ],
+    [
+     1.0,
+     0.88
+    ]
+   ]
+  }
+ }
 ]

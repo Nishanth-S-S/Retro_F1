@@ -40,10 +40,9 @@ func _run() -> void:
 	get_tree().change_scene_to_file("res://scenes/Garage.tscn")
 	await _wait(0.6)
 	var garage := _scene()
-	GameManager.profile["story_progress"] = 4
-	assert(GameManager.buy_part("front_wing_high_df"))
-	assert(GameManager.buy_part("tires_soft"))
-	assert(GameManager.buy_part("ballast_30"))
+	GameManager.profile["research_points"] = 500
+	assert(GameManager.is_owned("front_wing_high_df") and GameManager.is_owned("tires_soft") and GameManager.is_owned("ballast_30"))
+	assert(GameManager.unlock_part("tires_super"))
 	garage.call("_on_slot_tapped", "front_wing")
 	garage.call("_install", PartDB.get_part("front_wing_high_df"), "front_wing")
 	garage.call("_install", PartDB.get_part("tires_soft"), "tires")

@@ -64,11 +64,11 @@ func configure(setup: CarSetup, physics_config: VehiclePhysicsConfig) -> void:
 	_b = stats.cg_x
 	_a = config.wheelbase - _b
 	if setup.part("engine"):
-		engine.configure(setup.part("engine"))
+		engine.configure(setup.part("engine"), 1.0 + 0.04 * setup.level("engine"))
 	if setup.part("gearbox"):
-		transmission.configure(setup.part("gearbox"))
+		transmission.configure(setup.part("gearbox"), setup.level("gearbox"))
 	if setup.part("brakes"):
-		brakes.configure(setup.part("brakes"), setup.brake_bias)
+		brakes.configure(setup.part("brakes"), setup.brake_bias, 1.0 + 0.06 * setup.level("brakes"))
 	if setup.part("tires"):
 		front_tire.configure(setup.part("tires"))
 		rear_tire.configure(setup.part("tires"))

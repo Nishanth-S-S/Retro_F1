@@ -45,11 +45,10 @@ func _run() -> void:
 
 func _ui() -> void:
 	Career.new_career("wil", {"name": "ALEX STONE", "look": {"skin": 2, "hair": 1, "hair_color": 0, "accessory": 1, "outfit": 0}})
-	Career.state()["rp"] = 260
+	GameManager.profile["research_points"] = 260
 	Career.build_new_car()
-	Career.upgrade_material("car1", "aero")
-	Career.upgrade_material("car1", "aero")
-	Career.upgrade_material("car2", "chassis")
+	GameManager.upgrade_dev("rear_wing")
+	GameManager.upgrade_dev("engine")
 	Career.assign_car(Career.lineup()[1], "car2")
 	Career.state()["last_best"] = 3
 	CoachMarks.forced = true
@@ -59,6 +58,8 @@ func _ui() -> void:
 		node.queue_free()
 	CoachMarks.forced = false
 	Career.state()["date"] = 2
+	Career.state()["practice_day"] = 2
+	Career.state()["rest_day"] = 2
 	hub.call("_show_tab", 0)
 	await _shot("a_hq")
 	hub.call("_on_day_button")
@@ -122,6 +123,9 @@ func _ui() -> void:
 	await _shot("e_careers")
 	hub = await _goto("res://scenes/career/CareerHub.tscn")
 	Career.add_message("boss_mer", "We have triggered Albon's release clause.", {"type": "poach", "driver": Career.lineup()[0], "team": "mer", "cash": 9000, "yes": "RELEASE  +$9.0M", "no": "COUNTER  +20% PAY"})
+	HubPanels.rest_sheet(hub)
+	await _shot("f_rest")
+	hub.call("_close_modal")
 	hub.call("_open_phone")
 	await _shot("f_phone")
 	await _goto("res://scenes/career/RaceDay.tscn")
@@ -132,9 +136,9 @@ func _ui() -> void:
 	(garage.get("_details") as Control).visible = true
 	await _shot("h_car_card")
 	(garage.get("_details") as Control).visible = false
-	(garage.get("_workshop") as WorkshopUI).open()
-	await _shot("h_workshop")
-	(garage.get("_workshop") as WorkshopUI).visible = false
+	garage.call("_open_cars")
+	await _shot("h_cars")
+	garage.call("_close_cars")
 	garage.call("_show_picker", "engine")
 	await _shot("h_garage_engine")
 	garage.call("_show_picker", "rear_wing")
@@ -194,6 +198,9 @@ func _race() -> void:
 	await get_tree().physics_frame
 	race.player.is_player = true
 	race.player.damage = 55.0
+	var near := race.track.length - 110.0
+	race.player.place(race.track.position_at(near), race.track.heading_at(near))
+	await _shot("v_pit_arrows", 1.0)
 	var lane := -(race.track.half_width + TrackData.PIT_WIDTH * 0.55)
 	race.player.place(race.track.position_at(race.track.pit_start + 15.0, lane), race.track.heading_at(race.track.pit_start + 15.0))
 	while race.pit_phase != "service":

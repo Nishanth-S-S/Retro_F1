@@ -1,10 +1,54 @@
 [
-  {"id": "rear_wing_low_drag", "display_name": "Low Drag Rear", "description": "A thin single plane. Great top speed, little high-speed stability.", "price": 2500, "research_cost": 0, "mass": 9,
-   "stats": {"downforce_coefficient": 0.5, "drag_coefficient": 0.13, "adjustability": 0.3}},
-  {"id": "rear_wing_balanced", "display_name": "Balanced Rear", "description": "Two-plane all-rounder.", "price": 0, "research_cost": 0, "mass": 12,
-   "stats": {"downforce_coefficient": 0.9, "drag_coefficient": 0.27, "adjustability": 0.35}},
-  {"id": "rear_wing_high_df", "display_name": "High Downforce Rear", "description": "Deep chord, big endplates. Plants the rear in fast corners and drags like a parachute.", "price": 3500, "research_cost": 0, "mass": 15,
-   "stats": {"downforce_coefficient": 1.3, "drag_coefficient": 0.43, "adjustability": 0.35}},
-  {"id": "rear_wing_twin_plane", "display_name": "Twin Plane Rear", "description": "Experimental stacked wing with a very wide adjustment range. Weight hangs far behind the rear axle.", "price": 7000, "research_cost": 25, "mass": 20,
-   "stats": {"downforce_coefficient": 1.45, "drag_coefficient": 0.46, "adjustability": 0.55}}
+ {
+  "id": "rear_wing_low_drag",
+  "display_name": "Low Drag Rear",
+  "description": "A thin single plane. Great top speed, little high-speed stability.",
+  "price": 2500,
+  "research_cost": 0,
+  "mass": 9,
+  "stats": {
+   "downforce_coefficient": 0.5,
+   "drag_coefficient": 0.13,
+   "adjustability": 0.3
+  }
+ },
+ {
+  "id": "rear_wing_balanced",
+  "display_name": "Balanced Rear",
+  "description": "Two-plane all-rounder.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 12,
+  "stats": {
+   "downforce_coefficient": 0.9,
+   "drag_coefficient": 0.27,
+   "adjustability": 0.35
+  }
+ },
+ {
+  "id": "rear_wing_high_df",
+  "display_name": "High Downforce Rear",
+  "description": "Deep chord, big endplates. Plants the rear in fast corners and drags like a parachute.",
+  "price": 3500,
+  "research_cost": 0,
+  "mass": 15,
+  "stats": {
+   "downforce_coefficient": 1.3,
+   "drag_coefficient": 0.43,
+   "adjustability": 0.35
+  }
+ },
+ {
+  "id": "rear_wing_twin_plane",
+  "display_name": "Twin Plane Rear",
+  "description": "Experimental stacked wing with a very wide adjustment range. Weight hangs far behind the rear axle.",
+  "price": 7000,
+  "research_cost": 47,
+  "mass": 20,
+  "stats": {
+   "downforce_coefficient": 1.45,
+   "drag_coefficient": 0.46,
+   "adjustability": 0.55
+  }
+ }
 ]

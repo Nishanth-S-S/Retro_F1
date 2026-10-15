@@ -66,11 +66,34 @@ func _ready() -> void:
 	_check(Career.car_setup(Career.car("car1")).rear_wing_angle != 9 and Career.car_setup(Career.car("car2")).rear_wing_angle == 9, "the two cars keep separate setups")
 	print("     fits: %s on car1 %d / car2 %d,  %s on car1 %d / car2 %d" % [d0["name"], Career.car_fit(d0, Career.car("car1")), Career.car_fit(d0, Career.car("car2")), d1["name"], Career.car_fit(d1, Career.car("car1")), Career.car_fit(d1, Career.car("car2"))])
 	_check(Career.car_fit(d1, Career.car("car1")) != Career.car_fit(d1, Career.car("car2")), "fit rating changes with the car")
-	c["rp"] = 300
-	var ovr := Career.car_overall(Career.car("car1"))
-	_check(Career.upgrade_material("car1", "aero") == "" and Career.car_overall(Career.car("car1")) > ovr and int(c["rp"]) < 300, "material upgrade spends research and raises the car (%.1f -> %.1f)" % [ovr, Career.car_overall(Career.car("car1"))])
-	c["rp"] = 0
-	_check(Career.upgrade_material("car1", "aero") != "", "no research points, no upgrade")
+	GameManager.profile["research_points"] = 1000
+	var config: VehiclePhysicsConfig = load("res://data/physics/default_physics.tres")
+	for cat: String in GameManager.DEV_CATEGORIES:
+		var ovr := Career.car_overall(Career.car("car1"))
+		var card := float(CarRatings.compute(Career.car_setup(Career.car("car1")), CarStats.compute(Career.car_setup(Career.car("car1")), config))["overall"])
+		var rp := Career.rp()
+		var ok := GameManager.upgrade_dev(cat) and GameManager.upgrade_dev(cat)
+		var card2 := float(CarRatings.compute(Career.car_setup(Career.car("car1")), CarStats.compute(Career.car_setup(Career.car("car1")), config))["overall"])
+		_check(ok and Career.rp() < rp and Career.car_overall(Career.car("car1")) >= ovr and card2 >= card, "%s level 2: OVR %.1f -> %.1f, card %d -> %d" % [cat, ovr, Career.car_overall(Career.car("car1")), card, card2])
+	var all_up := Career.car_overall(Career.car("car1"))
+	GameManager.profile["research_points"] = 0
+	_check(not GameManager.upgrade_dev("engine"), "no research points, no upgrade")
+	print("     after 2 levels everywhere car1 OVR %.1f" % all_up)
+	# --- rest days
+	var rester: String = Career.lineup()[0]
+	Career.driver(rester)["fitness"] = 60.0
+	Career.driver(rester)["morale"] = 50
+	var morale := 50.0
+	Career.apply_rest({rester: "physio"})
+	_check(float(Career.driver(rester)["fitness"]) > 60.0, "physio lifts fitness (60 -> %d)" % int(Career.driver(rester)["fitness"]))
+	Career.apply_rest({rester: "mental"})
+	_check(float(Career.driver(rester).get("morale", 50.0)) > morale, "mental coaching lifts morale")
+	var rests := 0
+	var start := Career.race_day(int(c["round"]))
+	for day in range(start + 1, start + 15):
+		if Career.day_event(day)["type"] == "rest":
+			rests += 1
+	_check(rests >= 1 and rests <= 3, "%d rest days in a fortnight (1-3)" % rests)
 	# --- wind tunnel
 	var runs := Career.tunnel_runs_left()
 	var outcome := Career.run_tunnel("car1")

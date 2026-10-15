@@ -197,11 +197,10 @@ func _spawn_cars() -> void:
 	player_timer.lap_finished.connect(_on_player_lap)
 	player_timer.sector_finished.connect(_on_player_sector)
 	player_timer.lap_invalidated.connect(func() -> void: EventBus.driver_message.emit("LAP INVALID  ·  TRACK LIMITS", Color("ff5d5d")))
-	# Contact with a car or the wall shakes the camera and flashes the screen edges.
+	# Contact with a car or the wall gives the camera a slight shake.
 	player.collided.connect(func(strength: float) -> void:
-		_camera.add_shake(6.0 + strength * 20.0)
-		_camera.kick(strength)
-		_hud.flash_hit(strength))
+		_camera.add_shake(1.5 + strength * 3.5)
+		_camera.kick(strength * 0.25))
 	player.takes_damage = true
 	player.damage_scale = Difficulty.damage_scale()
 	player.wet = weather > 0
@@ -661,7 +660,7 @@ func open_drs() -> void:
 # ---------------------------------------------------------------- damage and story
 
 func _on_player_damaged(amount: float, total: float) -> void:
-	_camera.add_shake(minf(28.0, 5.0 + amount * 1.2))
+	_camera.add_shake(minf(4.0, 1.0 + amount * 0.15))
 	if amount >= 3.0 and total < 100.0:
 		EventBus.driver_message.emit("DAMAGE  %d%%" % int(total), Color("ff5d5d") if total > 60.0 else Color("ffb347"))
 

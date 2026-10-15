@@ -62,7 +62,8 @@ func _mass_and_balance(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 		if part == null or part.mass <= 0.0:
 			continue
 		var x: float = setup.ballast_x() if slot == "ballast" else float(CarSetup.SLOT_POSITION[slot])
-		mass_items.append({"slot": slot, "name": CarSetup.SLOT_LABELS[slot], "mass": part.mass, "x": x})
+		var m := part.mass - (5.0 * setup.level("chassis") if slot == "chassis" else 0.0)
+		mass_items.append({"slot": slot, "name": CarSetup.SLOT_LABELS[slot], "mass": m, "x": x})
 	var engine := setup.part("engine")
 	# Thirsty engines must carry more fuel for the same distance.
 	fuel_mass = config.base_fuel_mass / (engine.stat("fuel_efficiency", 1.0) if engine else 1.0)
@@ -95,13 +96,15 @@ func _aero(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 	drag_area = config.body_drag_area
 	if front:
 		var f := wing_angle_factor(front, setup.front_wing_angle)
-		front_downforce_area += front.stat("downforce_coefficient") * f
+		var lv := setup.level("front_wing")
+		front_downforce_area += front.stat("downforce_coefficient") * f * (1.0 + 0.05 * lv)
 		# Drag grows a little faster than downforce as the angle steepens.
-		drag_area += front.stat("drag_coefficient") * f * f
+		drag_area += front.stat("drag_coefficient") * f * f * (1.0 - 0.025 * lv)
 	if rear:
 		var f := wing_angle_factor(rear, setup.rear_wing_angle)
-		rear_downforce_area += rear.stat("downforce_coefficient") * f
-		drag_area += rear.stat("drag_coefficient") * f * f
+		var lv := setup.level("rear_wing")
+		rear_downforce_area += rear.stat("downforce_coefficient") * f * (1.0 + 0.05 * lv)
+		drag_area += rear.stat("drag_coefficient") * f * f * (1.0 - 0.025 * lv)
 	# A stiff platform keeps the wings and floor working; a soft one bleeds downforce.
 	if front_susp:
 		front_downforce_area *= front_susp.stat("aero_platform", 1.0)
@@ -134,8 +137,8 @@ func _chassis_and_grip(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 	front_curb = clampf(front_curb + (setup.ride_height - 5) * 0.04, 0.05, 1.0)
 	rear_curb = clampf(rear_curb + (setup.ride_height - 5) * 0.04, 0.05, 1.0)
 	# Anti-roll bars move grip between the axles: stiff front = understeer.
-	front_mech_grip *= 1.0 - setup.anti_roll * 0.012
-	rear_mech_grip *= 1.0 + setup.anti_roll * 0.012
+	front_mech_grip *= (1.0 - setup.anti_roll * 0.012) * (1.0 + 0.015 * setup.level("suspension"))
+	rear_mech_grip *= (1.0 + setup.anti_roll * 0.012) * (1.0 + 0.015 * setup.level("suspension"))
 	tire_grip = (tires.stat("base_grip", 1.45) if tires else 1.0) * config.tire_grip_multiplier * pressure_grip(setup.tyre_pressure)
 	var caps_low := _axle_capability(LOW_SPEED_REF, config)
 	var caps_high := _axle_capability(HIGH_SPEED_REF, config)
@@ -187,7 +190,7 @@ func _performance(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 	var gearbox_part := setup.part("gearbox")
 	var brakes_part := setup.part("brakes")
 	var tires_part := setup.part("tires")
-	power_kw = engine_part.stat("power_kw") if engine_part else 0.0
+	power_kw = (engine_part.stat("power_kw") if engine_part else 0.0) * (1.0 + 0.04 * setup.level("engine"))
 	power_to_weight = power_kw / maxf(mass, 1.0) * 1000.0
 	top_speed = 0.0
 	accel_0_100 = 0.0
@@ -196,14 +199,14 @@ func _performance(setup: CarSetup, config: VehiclePhysicsConfig) -> void:
 		var v := 55.56
 		var q := 0.5 * config.air_density * v * v
 		var grip_force := tire_grip * (mass * VehiclePhysicsConfig.GRAVITY + q * (front_downforce_area + rear_downforce_area)) * 0.93
-		braking_g = (minf(brakes_part.stat("max_brake_force"), grip_force) + q * drag_area) / (mass * VehiclePhysicsConfig.GRAVITY)
+		braking_g = (minf(brakes_part.stat("max_brake_force") * (1.0 + 0.06 * setup.level("brakes")), grip_force) + q * drag_area) / (mass * VehiclePhysicsConfig.GRAVITY)
 	if engine_part == null or gearbox_part == null:
 		return
 	var engine := EngineModel.new()
-	engine.configure(engine_part)
+	engine.configure(engine_part, 1.0 + 0.04 * setup.level("engine"))
 	peak_torque = engine.peak_torque
 	var gearbox := TransmissionModel.new()
-	gearbox.configure(gearbox_part)
+	gearbox.configure(gearbox_part, setup.level("gearbox"))
 	var rolling := (tires_part.stat("rolling_resistance", 0.012) if tires_part else 0.012) * mass * VehiclePhysicsConfig.GRAVITY
 	# Top speed: fastest speed where some gear still out-pulls drag.
 	var v_gear_limit := engine.redline_rpm / (gearbox.total_ratio(gearbox.gear_count())) * TAU * config.wheel_radius / 60.0

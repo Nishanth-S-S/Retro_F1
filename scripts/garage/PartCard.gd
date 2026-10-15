@@ -20,6 +20,10 @@ var _name: Label
 var _status: Label
 var _lines: Label
 var _action: Button
+var _ovr: Label
+## Set by the garage: what fitting this part would do to the car's overall, e.g. "OVR 64 -> 66".
+var ovr_line := ""
+var ovr_delta := 0
 
 
 func _ready() -> void:
@@ -42,10 +46,15 @@ func _ready() -> void:
 	row.add_child(text)
 	_name = UIKit.label("", 20)
 	_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name.clip_text = true
+	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	text.add_child(_name)
-	_status = UIKit.label("", 13, UIKit.ACCENT)
+	_ovr = UIKit.label("", 18, UIKit.TEXT)
+	_ovr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.add_child(_ovr)
+	_status = UIKit.label("", 12, UIKit.ACCENT)
 	text.add_child(_status)
-	_lines = UIKit.label("", 12, UIKit.TEXT_DIM)
+	_lines = UIKit.label("", 11, UIKit.TEXT_DIM)
 	_lines.add_theme_constant_override("line_spacing", -2)
 	text.add_child(_lines)
 	_action = UIKit.button("", 15)
@@ -71,8 +80,9 @@ func refresh() -> void:
 	_name.text = part.display_name
 	_lines.text = part.summary_lines()[0]
 	var owned := GameManager.is_owned(part.id)
-	var unlocked := GameManager.is_unlocked(part.id)
 	var installed := GameManager.setup.parts.values().has(part.id)
+	_ovr.text = ovr_line
+	_ovr.add_theme_color_override("font_color", UIKit.GOOD if ovr_delta > 0 else (UIKit.BAD if ovr_delta < 0 else UIKit.TEXT))
 	var border := UIKit.LINE
 	_action.disabled = false
 	_action.visible = true
@@ -86,17 +96,13 @@ func refresh() -> void:
 		_status.text = "OWNED"
 		_status.add_theme_color_override("font_color", UIKit.ACCENT)
 		_action.text = "FIT"
-	elif unlocked:
-		_status.text = "FOR SALE"
-		_status.add_theme_color_override("font_color", UIKit.HOT)
-		_action.text = "BUY\n%s" % UIKit.money(part.price)
-		_status.text = "FOR SALE  ·  %s" % UIKit.money(part.price)
-		_action.disabled = GameManager.money() < part.price
 	else:
-		_status.text = "LOCKED  ·  R&D %d" % Career.part_tier(part.id)
+		# Not developed yet: research points unlock it for good.
+		var cost := GameManager.research_cost(part.id)
+		_status.text = "NEEDS RESEARCH"
 		_status.add_theme_color_override("font_color", UIKit.PURPLE)
-		_action.text = "LOCKED"
-		_action.disabled = true
+		_action.text = "RESEARCH\n%d RP" % cost
+		_action.disabled = GameManager.research() < cost
 		border = UIKit.PURPLE.darkened(0.45)
 	if Career.is_banned(part.id):
 		_status.text = "BANNED BY THE FIA"

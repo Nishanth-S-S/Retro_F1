@@ -1,8 +1,41 @@
 [
-  {"id": "brakes_standard", "display_name": "Standard", "description": "Steel discs. Predictable and adequate.", "price": 0, "research_cost": 0, "mass": 18,
-   "stats": {"max_brake_force": 16500, "heat_capacity": 1.0, "cooling_rate": 1.0}},
-  {"id": "brakes_lightweight", "display_name": "Lightweight", "description": "Thin discs save a lot of mass but fade when worked hard lap after lap.", "price": 3000, "research_cost": 0, "mass": 11,
-   "stats": {"max_brake_force": 15500, "heat_capacity": 0.55, "cooling_rate": 1.1}},
-  {"id": "brakes_racing", "display_name": "Racing", "description": "Big calipers and thick discs. Enormous stopping power that shrugs off heat - and easier to lock without care.", "price": 9000, "research_cost": 25, "mass": 22,
-   "stats": {"max_brake_force": 21500, "heat_capacity": 1.7, "cooling_rate": 1.2}}
+ {
+  "id": "brakes_standard",
+  "display_name": "Standard",
+  "description": "Steel discs. Predictable and adequate.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 18,
+  "stats": {
+   "max_brake_force": 16500,
+   "heat_capacity": 1.0,
+   "cooling_rate": 1.0
+  }
+ },
+ {
+  "id": "brakes_lightweight",
+  "display_name": "Lightweight",
+  "description": "Thin discs save a lot of mass but fade when worked hard lap after lap.",
+  "price": 3000,
+  "research_cost": 20,
+  "mass": 11,
+  "stats": {
+   "max_brake_force": 15500,
+   "heat_capacity": 0.55,
+   "cooling_rate": 1.1
+  }
+ },
+ {
+  "id": "brakes_racing",
+  "display_name": "Racing",
+  "description": "Big calipers and thick discs. Enormous stopping power that shrugs off heat - and easier to lock without care.",
+  "price": 9000,
+  "research_cost": 60,
+  "mass": 22,
+  "stats": {
+   "max_brake_force": 21500,
+   "heat_capacity": 1.7,
+   "cooling_rate": 1.2
+  }
+ }
 ]

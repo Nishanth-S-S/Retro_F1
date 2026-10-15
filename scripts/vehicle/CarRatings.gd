@@ -18,12 +18,18 @@ const CATEGORIES := [
 	["TYRE LIFE", 0.05, "How long the tyres last"],
 ]
 
+## Upgrade levels also show on the card directly: what each level adds to a rating on top of
+## the physics change (better brake cooling, suspension kinematics, quicker shifts...).
+const DEV_RATING := {"brakes": ["BRAKING", 4], "suspension": ["CORNERING", 3], "gearbox": ["ACCELERATION", 4]}
+## Overall points per upgrade level of any part type, so every package shows up in the overall.
+const DEV_OVERALL := 1.0
+
 
 static func _scale(value: float, low: float, high: float) -> int:
 	return clampi(int(round(40.0 + 59.0 * inverse_lerp(low, high, value))), 30, 99)
 
 
-## {"ratings": [[name, value, detail]], "overall": int}
+## {"ratings": [[name, value, detail]], "overall": int, "overall_raw": float}
 static func compute(setup: CarSetup, stats: CarStats) -> Dictionary:
 	var g := VehiclePhysicsConfig.GRAVITY
 	var q := 0.5 * 1.225 * 55.56 * 55.56
@@ -43,10 +49,17 @@ static func compute(setup: CarSetup, stats: CarStats) -> Dictionary:
 		"WEIGHT": [_scale(-stats.mass, -760.0, -600.0), "%d kg" % int(stats.mass)],
 		"TYRE LIFE": [_scale(-wear, -3.5, -0.15), "wear x%.1f" % wear],
 	}
+	var levels := 0
+	for cat: String in setup.dev:
+		levels += setup.level(cat)
+		if DEV_RATING.has(cat):
+			var v: Array = values[DEV_RATING[cat][0]]
+			v[0] = mini(99, int(v[0]) + int(DEV_RATING[cat][1]) * setup.level(cat))
 	var ratings: Array = []
 	var total := 0.0
 	for c: Array in CATEGORIES:
 		var v: Array = values[c[0]]
 		ratings.append([c[0], int(v[0]), str(v[1]), c[2]])
 		total += float(v[0]) * float(c[1])
-	return {"ratings": ratings, "overall": int(round(total)) if stats.valid else 30}
+	total = minf(99.0, total + levels * DEV_OVERALL)
+	return {"ratings": ratings, "overall": int(round(total)) if stats.valid else 30, "overall_raw": total if stats.valid else 30.0}

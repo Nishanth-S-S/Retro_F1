@@ -11,8 +11,7 @@ func _ready() -> void:
 	for team_id: String in ["cad", "mcl"]:
 		Career.new_career(team_id, {"name": "TEST", "look": PixelArt.default_look()})
 		print("\n=== %s  cash %s  car %.0f  team %d ===" % [Career.my_team()["name"], UIKit.money(GameManager.money()), Career.car_rating(team_id), Career.team_rating(team_id)])
-		print(Career.commission_package())
-		print("upgrade aero: '%s'  rd: '%s'  rd level %d  medium unlocked %s" % [Career.upgrade("aero"), Career.upgrade("rd"), Career.rd_level(), GameManager.is_unlocked("tires_medium")])
+		print("upgrade wing: %s  pit crew: '%s'  RP left %d" % [GameManager.upgrade_dev("rear_wing"), Career.upgrade_pit_crew(), Career.rp()])
 		print("sponsor: '%s' / %s" % [Career.negotiate_sponsor(0), Career.sign_sponsor(0) if Career.state()["sponsor_offers"].size() > 0 else "-"])
 		var market := Career.market()
 		print("market %d, top: %s ovr %d" % [market.size(), market[0]["name"], Career.driver_overall(market[0])])

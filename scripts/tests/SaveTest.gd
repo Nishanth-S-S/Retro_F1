@@ -20,17 +20,22 @@ func _ready() -> void:
 	_check(GameManager.setup.parts["engine"] == "engine_compact_4" and GameManager.setup.parts["tires"] == "tires_hard", "starting build matches the spec")
 	_check(PartDB.all_ids().size() >= 20, "%d parts defined (>= 20)" % PartDB.all_ids().size())
 	# Economy rules.
-	_check(not GameManager.buy_part("engine_turbo_6"), "R&D-locked part cannot be bought")
-	_check(GameManager.is_unlocked("tires_medium") and not GameManager.is_unlocked("tires_super"), "medium tires open from the start, super softs locked")
+	GameManager.profile["research_points"] = 0
+	_check(not GameManager.unlock_part("engine_turbo_6"), "no research points, no new engine")
+	_check(GameManager.is_owned("tires_medium") and not GameManager.is_owned("tires_super"), "medium tires open from the start, super softs need research")
 	Career.new_career("wil", {"name": "TEST", "look": PixelArt.default_look()})
 	_check(Career.active() and GameManager.money() == 40000 and Career.lineup().size() == 2, "new career sets team budget and two drivers")
-	_check(Career.upgrade("rd") == "" and GameManager.is_unlocked("tires_super"), "R&D level 1 unlocks parts")
-	_check(int(Career.state()["cap_spent"]) == 2000, "factory spending counts against the cost cap")
-	GameManager.profile["story_progress"] = 6
-	_check(GameManager.buy_part("chassis_lightweight"), "unlocked part can be bought")
-	_check(GameManager.install_part("chassis", "chassis_lightweight"), "owned part installs")
+	_check(GameManager.research() == Career.STARTING_RP, "career starts with %d research points" % Career.STARTING_RP)
+	GameManager.profile["research_points"] = 300
+	var cash := GameManager.money()
+	_check(GameManager.unlock_part("chassis_lightweight") and GameManager.research() == 300 - GameManager.research_cost("chassis_lightweight"), "research spends RP and unlocks the part")
+	_check(GameManager.money() == cash, "money never buys car parts")
+	_check(GameManager.install_part("chassis", "chassis_lightweight"), "researched part installs")
 	_check(not GameManager.install_part("engine", "chassis_lightweight"), "part refuses the wrong hardpoint")
-	_check(GameManager.buy_part("tires_soft") and GameManager.install_part("tires", "tires_soft"), "buy + fit soft tires")
+	_check(GameManager.install_part("tires", "tires_soft"), "fit soft tires (free)")
+	var before := Career.car_overall(Career.active_car())
+	_check(GameManager.upgrade_dev("engine") and GameManager.dev_level("engine") == 1 and GameManager.setup.level("engine") == 1, "engine upgrade level 1")
+	_check(Career.car_overall(Career.active_car()) > before, "upgrade raises the overall (%.1f -> %.1f)" % [before, Career.car_overall(Career.active_car())])
 	GameManager.setup.rear_wing_angle = 8
 	GameManager.setup.ballast_position = 0.2
 	GameManager.set_setting("camera_rotation", true)
@@ -41,6 +46,7 @@ func _ready() -> void:
 	GameManager.load_profile()
 	_check(GameManager.money() == money and Career.active() and Career.state()["team"] == "wil", "money and career persist")
 	_check(GameManager.is_owned("chassis_lightweight"), "owned parts persist")
+	_check(GameManager.setup.level("engine") == 1, "upgrade levels persist")
 	_check(GameManager.setup.parts["chassis"] == "chassis_lightweight" and GameManager.setup.parts["tires"] == "tires_soft", "installed parts persist")
 	_check(GameManager.setup.rear_wing_angle == 8 and is_equal_approx(GameManager.setup.ballast_position, 0.2), "car setup persists")
 	_check(bool(GameManager.setting("camera_rotation")), "settings persist")

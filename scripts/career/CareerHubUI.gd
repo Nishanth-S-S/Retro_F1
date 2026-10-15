@@ -126,7 +126,7 @@ func _build_header() -> void:
 	_header.add_child(phone)
 
 
-## Bottom-right button: today's job until it is done (PRACTICE, QUALIFYING, RACE), then NEXT.
+## Bottom-right button: today's job until it is done (PRACTICE, REST, QUALIFYING, RACE), then NEXT.
 func _refresh_day_button() -> void:
 	var kind := str(Career.day_event()["type"])
 	if Career.day_done():
@@ -135,6 +135,8 @@ func _refresh_day_button() -> void:
 		_day_button.text = "RACE  >"
 	elif kind == "quali":
 		_day_button.text = "QUALIFYING  >"
+	elif kind == "rest":
+		_day_button.text = "REST  >"
 	else:
 		_day_button.text = "PRACTICE  >"
 
@@ -144,6 +146,8 @@ func _on_day_button() -> void:
 	if not Career.day_done():
 		if kind == "race" or kind == "quali":
 			SceneManager.goto("raceday")
+		elif kind == "rest":
+			HubPanels.rest_sheet(self)
 		else:
 			HubPanels.practice_sheet(self)
 		return
@@ -234,8 +238,10 @@ func _tab_hq() -> void:
 	var until := Career.race_day(int(c["round"])) - Career.today()
 	_text(next, "NEXT: %s  ·  %s  ·  %s" % [str(round_info["name"]).to_upper(), Career.format_label(round_info), "TODAY" if until == 0 else "IN %d DAY%s" % [until, "" if until == 1 else "S"]], 15, UIKit.TEXT_DIM)
 	var kind := str(event["type"])
-	if (kind == "practice" or kind == "test") and not Career.practice_done():
+	if kind == "practice" and not Career.practice_done():
 		next.add_child(HubPanels.press_anim(_big("RUN PRACTICE", true, func() -> void: HubPanels.practice_sheet(self), 18, 56.0)))
+	elif kind == "rest" and not Career.day_done():
+		next.add_child(HubPanels.press_anim(_big("PLAN RECOVERY", true, func() -> void: HubPanels.rest_sheet(self), 18, 56.0)))
 	var latest: Array = Career.news().slice(0, 2)
 	for item: Dictionary in latest:
 		_text(next, "NEWS  %s:  %s" % [Career.date_text(int(item["day"])), item["text"]], 13, UIKit.TEXT_DIM)
@@ -271,8 +277,8 @@ func _tab_hq() -> void:
 	chips.add_child(Art.chip("CAR", int(round(Career.car_rating(c["team"]))), UIKit.LINE.darkened(0.3)))
 	chips.add_child(Art.chip("TEAM", Career.team_rating(c["team"]), UIKit.WARM))
 	chips.add_child(Art.chip("POS", Career.team_position(), Color("23262e")))
-	chips.add_child(Art.chip("RESEARCH", int(c["rp"]), UIKit.LINE.darkened(0.3)))
-	chips.add_child(Art.chip("R&D LVL", Career.rd_level(), Color("23262e")))
+	chips.add_child(Art.chip("RESEARCH", Career.rp(), UIKit.LINE.darkened(0.3)))
+	chips.add_child(Art.chip("PIT CREW", int(c["factory"].get("pit", 0)), Color("23262e")))
 	HubPanels.clickable(me.get_parent(), func() -> void: HubPanels.manager_card(self))
 	var actions := _columns()
 	var sponsor: Dictionary = c["sponsor"]
@@ -280,12 +286,23 @@ func _tab_hq() -> void:
 	actions.add_child(_big("SCHEDULE", false, _show_schedule))
 	# --- staff roster
 	var income := Career.research_income()
-	var staff := _card(null, "STAFF  %d / %d   ·   %d RESEARCH   ·   +%d A WEEK" % [Career.engineers().size(), Career.max_engineers(), int(c["rp"]), int(income["total"])])
+	var staff := _card(null, "STAFF  %d / %d   ·   %d RESEARCH   ·   +%d A WEEK" % [Career.engineers().size(), Career.max_engineers(), Career.rp(), int(income["total"])])
 	var roster := HBoxContainer.new()
 	roster.add_theme_constant_override("separation", 10)
 	staff.add_child(roster)
 	for id: String in Career.engineers():
 		roster.add_child(_staff_tile(id))
+	# The pit crew: the one thing money still buys for racing - faster stops.
+	var crew_level := int(c["factory"].get("pit", 0))
+	var crew_cost := Career.pit_crew_cost()
+	var crew := UIKit.button("PIT CREW\nLEVEL %d / %d\n%s" % [crew_level, Career.FACTORY_MAX, ("UPGRADE " + UIKit.money(crew_cost)) if crew_cost > 0 else "MAXED"], 15)
+	crew.custom_minimum_size = Vector2(176, 150)
+	crew.disabled = crew_cost <= 0
+	crew.pressed.connect(func() -> void:
+		var error := Career.upgrade_pit_crew()
+		_say("Pit crew upgraded - faster stops." if error == "" else error, error == "")
+		_show_tab(0))
+	roster.add_child(HubPanels.press_anim(crew))
 	var hire := UIKit.button("+ HIRE", 22, true)
 	_marks["hire"] = hire
 	hire.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -5,9 +5,9 @@ extends Node
 const MODE_TEST := "test"
 const MODE_TIME_TRIAL := "time_trial"
 const MODE_RACE := "race"
-const MODE_LABELS := {"test": "TEST DRIVE", "time_trial": "TIME TRIAL", "race": "5 LAP RACE"}
-const RACE_LAPS := 5
-const SPRINT_LAPS := 3
+const MODE_LABELS := {"test": "TEST DRIVE", "time_trial": "TIME TRIAL", "race": "3 LAP RACE"}
+const RACE_LAPS := 3
+const SPRINT_LAPS := 2
 ## The first five are real Grand Prix circuits (layouts from the f1-circuits dataset), the rest are fictional.
 const TRACKS: PackedStringArray = ["monza", "silverstone", "spa", "interlagos", "spielberg", "falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven"]
 const TRACK_NAMES := {"monza": "MONZA", "silverstone": "SILVERSTONE", "spa": "SPA", "interlagos": "INTERLAGOS", "spielberg": "RED BULL RING",
@@ -75,17 +75,8 @@ func record() -> Dictionary:
 
 # ---------------------------------------------------------------- unlock tiers
 
-## R&D level reached in the career factory; parts of a tier unlock once it is reached.
-func story_progress() -> int:
-	return int(profile.get("story_progress", 0))
-
-
 func mission() -> Dictionary:
 	return {}
-
-
-func unlock_chapter_of(part_id: String) -> int:
-	return Career.part_tier(part_id) - 1
 
 
 # ---------------------------------------------------------------- profile
@@ -118,7 +109,7 @@ func default_profile() -> Dictionary:
 		"completed_challenges": [],
 		"claimed_targets": [],
 		"first_lap_done": false,
-		"story_progress": 0,
+		"dev_levels": {},
 		"career": {},
 		"tutorial_seen": false,
 		"coach_seen": {},
@@ -152,6 +143,7 @@ func load_profile() -> void:
 	if not loaded.is_empty() and not loaded.has("camera_default_applied"):
 		settings["camera_rotation"] = true          # rotating camera became the default
 	setup = CarSetup.from_dict(profile["car_setup"])
+	apply_dev(setup)
 	# Never keep a part installed that the player does not own.
 	for slot in CarSetup.SLOTS:
 		if setup.parts.has(slot) and not is_owned(setup.parts[slot]):
@@ -206,38 +198,80 @@ func add_research(amount: int) -> void:
 	EventBus.research_changed.emit(research())
 
 
+## A part is yours once it has been researched (or came with the car). Money never buys
+## car parts - research points do.
 func is_owned(part_id: String) -> bool:
-	return profile["owned_parts"].has(part_id)
+	return profile["owned_parts"].has(part_id) or profile["unlocked_parts"].has(part_id)
 
 
-## Parts unlock by progressing through the story (anything already owned stays usable).
 func is_unlocked(part_id: String) -> bool:
-	return unlock_chapter_of(part_id) < story_progress() or is_owned(part_id)
+	return is_owned(part_id)
 
 
+## Research points a part costs, less a specialist engineer's discount in the career.
+func research_cost(part_id: String) -> int:
+	var part := PartDB.get_part(part_id)
+	if part == null:
+		return 0
+	return int(round(part.research_cost * (Career.research_discount(part.category) if Career.active() else 1.0)))
+
+
+## Spends research points to develop a part; it can then be fitted to any car for free.
 func unlock_part(part_id: String) -> bool:
 	var part := PartDB.get_part(part_id)
-	if part == null or is_unlocked(part_id) or research() < part.research_cost:
+	var cost := research_cost(part_id)
+	if part == null or is_owned(part_id) or research() < cost:
 		return false
-	add_research(-part.research_cost)
+	add_research(-cost)
 	profile["unlocked_parts"].append(part_id)
 	EventBus.inventory_changed.emit()
 	save()
 	return true
 
 
-func buy_part(part_id: String) -> bool:
-	var part := PartDB.get_part(part_id)
-	if part == null or is_owned(part_id) or not is_unlocked(part_id) or money() < part.price:
+# ---------------------------------------------------------------- upgrade levels
+
+## Each part type can be developed through five levels with research points, like an F1
+## upgrade package. Levels belong to the team and apply to every car.
+const DEV_CATEGORIES: PackedStringArray = ["engine", "front_wing", "rear_wing", "brakes", "suspension", "chassis", "gearbox"]
+const DEV_MAX := 5
+const DEV_COSTS: PackedInt32Array = [20, 35, 55, 80, 110]
+const DEV_EFFECTS := {
+	"engine": "+4% POWER", "front_wing": "+5% DOWNFORCE, -2.5% DRAG", "rear_wing": "+5% DOWNFORCE, -2.5% DRAG",
+	"brakes": "+6% STOPPING POWER", "suspension": "+1.5% GRIP", "chassis": "-5 KG", "gearbox": "-10% SHIFT TIME",
+}
+
+
+func dev_level(category: String) -> int:
+	return int((profile.get("dev_levels", {}) as Dictionary).get(category, 0))
+
+
+## Research points for the next level (0 = maxed out or no levels for this part type).
+func dev_cost(category: String) -> int:
+	var level := dev_level(category)
+	if not DEV_CATEGORIES.has(category) or level >= DEV_MAX:
+		return 0
+	return int(round(DEV_COSTS[level] * (Career.research_discount(category) if Career.active() else 1.0)))
+
+
+func upgrade_dev(category: String) -> bool:
+	var cost := dev_cost(category)
+	if cost <= 0 or research() < cost:
 		return false
-	if Career.active() and part.price > Career.cap_left():
-		return false                 # would break the season's cost cap
-	Career.charge_cap(part.price)
-	add_money(-part.price)
-	profile["owned_parts"].append(part_id)
-	EventBus.inventory_changed.emit()
+	add_research(-cost)
+	if not profile.has("dev_levels"):
+		profile["dev_levels"] = {}
+	profile["dev_levels"][category] = dev_level(category) + 1
+	apply_dev(setup)
+	EventBus.setup_changed.emit()
 	save()
 	return true
+
+
+## Copies the team's upgrade levels onto a build so its numbers and physics use them.
+func apply_dev(target: CarSetup) -> CarSetup:
+	target.dev = (profile.get("dev_levels", {}) as Dictionary).duplicate()
+	return target
 
 
 func install_part(slot: String, part_id: String) -> bool:

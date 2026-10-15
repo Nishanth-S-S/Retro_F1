@@ -1,8 +1,50 @@
 [
-  {"id": "suspension_soft", "display_name": "Soft", "description": "Compliant springs find mechanical grip and soak up curbs, but the car is slow to respond and the aero platform moves around.", "price": 2000, "research_cost": 0, "mass": 19,
-   "stats": {"spring_rate": 80, "damping": 0.7, "mechanical_grip_modifier": 1.035, "response_modifier": 0.8, "curb_compliance": 0.9, "aero_platform": 0.96}},
-  {"id": "suspension_balanced", "display_name": "Balanced", "description": "A sensible middle setting.", "price": 0, "research_cost": 0, "mass": 20,
-   "stats": {"spring_rate": 120, "damping": 1.0, "mechanical_grip_modifier": 1.0, "response_modifier": 1.0, "curb_compliance": 0.5, "aero_platform": 1.0}},
-  {"id": "suspension_stiff", "display_name": "Stiff", "description": "Sharp response and a stable aero platform at speed. Skips over curbs and gives up low-speed grip.", "price": 2000, "research_cost": 0, "mass": 21,
-   "stats": {"spring_rate": 170, "damping": 1.3, "mechanical_grip_modifier": 0.968, "response_modifier": 1.22, "curb_compliance": 0.1, "aero_platform": 1.04}}
+ {
+  "id": "suspension_soft",
+  "display_name": "Soft",
+  "description": "Compliant springs find mechanical grip and soak up curbs, but the car is slow to respond and the aero platform moves around.",
+  "price": 2000,
+  "research_cost": 0,
+  "mass": 19,
+  "stats": {
+   "spring_rate": 80,
+   "damping": 0.7,
+   "mechanical_grip_modifier": 1.035,
+   "response_modifier": 0.8,
+   "curb_compliance": 0.9,
+   "aero_platform": 0.96
+  }
+ },
+ {
+  "id": "suspension_balanced",
+  "display_name": "Balanced",
+  "description": "A sensible middle setting.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 20,
+  "stats": {
+   "spring_rate": 120,
+   "damping": 1.0,
+   "mechanical_grip_modifier": 1.0,
+   "response_modifier": 1.0,
+   "curb_compliance": 0.5,
+   "aero_platform": 1.0
+  }
+ },
+ {
+  "id": "suspension_stiff",
+  "display_name": "Stiff",
+  "description": "Sharp response and a stable aero platform at speed. Skips over curbs and gives up low-speed grip.",
+  "price": 2000,
+  "research_cost": 0,
+  "mass": 21,
+  "stats": {
+   "spring_rate": 170,
+   "damping": 1.3,
+   "mechanical_grip_modifier": 0.968,
+   "response_modifier": 1.22,
+   "curb_compliance": 0.1,
+   "aero_platform": 1.04
+  }
+ }
 ]

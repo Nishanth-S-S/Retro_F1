@@ -11,36 +11,21 @@ const SCOUT_COSTS: PackedInt32Array = [400, 700, 1200]
 const MAX_RESERVES := 3
 ## Share of a reserve driver's salary that is paid and counts against the cap.
 const RESERVE_SALARY_SHARE := 0.3
-const DEPARTMENTS := {
-	"aero": {"name": "AERO DEPT", "note": "+1.5 car rating per level"},
-	"power": {"name": "POWER UNIT", "note": "+1.5 car rating per level"},
-	"pit": {"name": "PIT CREW", "note": "-0.5 s per pit stop per level"},
-	"rd": {"name": "R&D LAB", "note": "unlocks new parts in the garage"},
-}
 const POINTS: PackedInt32Array = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 const SPRINT_POINTS: PackedInt32Array = [8, 7, 6, 5, 4, 3, 2, 1]
 const SEASON_PRIZE: PackedInt32Array = [30000, 26000, 23000, 20000, 17000, 15000, 13000, 11000, 9000, 8000, 7000]
 const MAX_CARS := 4
 const NEW_CAR_COST := 2500           # $k to build another chassis (counts against the cost cap)
 const ENGINEER_SLOTS := 5            # a full engineering office
-const MAX_RP := 400                  # unspent research points above this are lost
+const MAX_RP := 600                  # unspent research points above this are lost
+const STARTING_RP := 40
 const TUNNEL_BONUS := 2.5            # car rating from a fully correlated wind-tunnel model
-const MATERIAL_BONUS := 0.4          # car rating per material tier
-const MATERIAL_COSTS: PackedInt32Array = [40, 80, 140, 220]
 const ENGINEER_SPECS := {
-	"aero": {"name": "AERODYNAMICIST", "short": "AERO", "note": "Wind-tunnel runs teach more. Cheaper aero materials."},
-	"power": {"name": "ENGINE SPECIALIST", "short": "ENGINE", "note": "Cheaper power-unit materials."},
-	"chassis": {"name": "CHASSIS DESIGNER", "short": "CHASSIS", "note": "Cheaper monocoque, brake and suspension materials."},
+	"aero": {"name": "AERODYNAMICIST", "short": "AERO", "note": "Wind-tunnel runs teach more. Cheaper wing research and upgrades."},
+	"power": {"name": "ENGINE SPECIALIST", "short": "ENGINE", "note": "Cheaper engine and gearbox research and upgrades."},
+	"chassis": {"name": "CHASSIS DESIGNER", "short": "CHASSIS", "note": "Cheaper chassis, brake and suspension research and upgrades."},
 	"data": {"name": "DATA ANALYST", "short": "DATA", "note": "More research points every week."},
 	"strategy": {"name": "STRATEGIST", "short": "STRATEGY", "note": "Faster pit stops in simulated races."},
-}
-## What research points buy: a material tier per area of each car.
-const MATERIAL_AREAS := {
-	"chassis": {"name": "MONOCOQUE", "spec": "chassis", "tiers": ["STEEL TUBE", "ALUMINIUM", "CARBON FIBRE", "CARBON-TITANIUM", "GRAPHENE WEAVE"]},
-	"aero": {"name": "AERO SURFACES", "spec": "aero", "tiers": ["FIBREGLASS", "PRE-PREG CARBON", "HIGH-MODULUS CARBON", "FLEX-TUNED CARBON", "ACTIVE SKIN"]},
-	"power": {"name": "POWER UNIT", "spec": "power", "tiers": ["CAST IRON", "ALUMINIUM ALLOY", "TITANIUM VALVES", "INCONEL EXHAUST", "CERAMIC MATRIX"]},
-	"brakes": {"name": "BRAKES", "spec": "chassis", "tiers": ["STEEL DISCS", "VENTED STEEL", "CARBON-CERAMIC", "CARBON-CARBON", "CARBON-SILICON"]},
-	"suspension": {"name": "SUSPENSION", "spec": "chassis", "tiers": ["STEEL ARMS", "CHROMOLY", "TITANIUM", "CARBON WISHBONES", "METAL MATRIX"]},
 }
 const TRACK_TYPES := {"monza": "HIGH SPEED", "silverstone": "FAST SWEEPS", "spa": "FOREST ROAD", "interlagos": "TECHNICAL", "spielberg": "HIGH SPEED",
 	"falcon_ridge": "TECHNICAL", "tempo_park": "HIGH SPEED", "port_azure": "STREET", "silver_lake": "FAST SWEEPS", "nordhaven": "FOREST ROAD"}
@@ -62,7 +47,6 @@ var teams: Array = []
 var calendar: Array = []
 var sponsors: Array = []
 var events: Array = []
-var rd_tiers: Array = []
 var _base_drivers: Array = []
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _rng := RandomNumberGenerator.new()
@@ -75,7 +59,6 @@ func _ready() -> void:
 	calendar = _load("calendar")
 	sponsors = _load("sponsors")
 	events = _load("events")
-	rd_tiers = _load("rd_tiers")
 	_base_drivers = _load("drivers")
 	_rng.randomize()
 
@@ -107,6 +90,12 @@ func active() -> bool:
 		c["regs"]["v"] = 2
 		if int(c["season"]) == 1:
 			c["regs"]["max_wing"] = CarSetup.WING_ANGLE_MAX
+	if c.has("rp"):
+		# Research used to be a career-only number; it now lives in the one RP wallet.
+		GameManager.profile["research_points"] = GameManager.research() + int(c["rp"])
+		c.erase("rp")
+	if (c.get("factory", {}) as Dictionary).has("rd"):
+		c["factory"] = {"pit": int(c["factory"].get("pit", 0))}
 	if not c.has("date"):
 		# Careers from before the calendar start on the Friday of their next race weekend.
 		c["date"] = race_day(int(c["round"])) - 2
@@ -138,16 +127,25 @@ func lineup() -> Array:
 	return state()["lineup"]
 
 
-func rd_level() -> int:
-	return int(state()["factory"]["rd"]) if active() else 0
+## Research discount (0.75-1.0) from your best specialist for a part type.
+func research_discount(category: String) -> float:
+	var spec := "chassis"
+	if category in ["front_wing", "rear_wing"]:
+		spec = "aero"
+	elif category in ["engine", "gearbox"]:
+		spec = "power"
+	elif category in ["tires", "ballast"]:
+		return 1.0
+	return 1.0 - best_engineer(spec) / 400.0
 
 
-## Garage unlock tier of a part: 0 = available from the start.
-func part_tier(part_id: String) -> int:
-	for tier: Dictionary in rd_tiers:
-		if (tier["unlocks"] as Array).has(part_id):
-			return int(tier["level"])
-	return 0
+## Research points: one wallet per save, shared with the garage.
+func rp() -> int:
+	return GameManager.research()
+
+
+func add_rp(amount: int) -> void:
+	GameManager.add_research(clampi(amount, -GameManager.research(), MAX_RP - GameManager.research()))
 
 
 static func money_text(amount_k: float) -> String:
@@ -169,7 +167,7 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 		"active": true, "manager": manager, "team": team_id, "season": 1, "round": 0,
 		"drivers": drivers, "lineup": [], "reserves": [], "number_one": "",
 		"sponsor": {}, "sponsor_offers": [],
-		"factory": {"aero": 0, "power": 0, "pit": 0, "rd": 0},
+		"factory": {"pit": 0},
 		"board": 60, "reputation": 50 - int(team(team_id)["expectation"]) * 2 + 10, "fia": 0, "cap_spent": 0, "car_bonus": 0.0,
 		"points": {}, "team_points": {}, "team_cars": {},
 		"pending_event": {}, "last_event": "", "promise": 0, "audited": false, "fired": false, "last_report": {},
@@ -184,13 +182,15 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 			career["lineup"].append(id)
 	GameManager.profile["career"] = career
 	GameManager.profile["money"] = int(team(team_id)["budget"])
+	GameManager.profile["research_points"] = STARTING_RP
+	GameManager.profile["dev_levels"] = {}
+	GameManager.apply_dev(GameManager.setup)
 	_generate_juniors()
 	_generate_people()
 	_add_starting_reserve()
 	_init_team_extras()
 	manager_contract()
 	_refresh_sponsor_offers()
-	_sync_unlocks()
 	add_message("owner", "Welcome aboard. The target is simple: %s. Don't make me regret this." % board_target_text().to_lower())
 	add_message("engineer", "Boss - I'll text you after every race with the damage report. Tap GO TO RACE when you're ready: you can drive it yourself, run the pit wall, or quick-sim.")
 	add_message("scout", "I've got eyes on the junior leagues. Check the SCOUTING tab - a report costs %s and tells you a kid's real ceiling." % money_text(150))
@@ -237,10 +237,6 @@ func _add_starting_reserve() -> void:
 	state()["reserves"].append(id)
 
 
-func _sync_unlocks() -> void:
-	GameManager.profile["story_progress"] = rd_level()
-
-
 # ---------------------------------------------------------------- ratings
 
 func driver_overall(d: Dictionary) -> int:
@@ -260,7 +256,7 @@ func setup_stats(setup: CarSetup) -> CarStats:
 ## The car card's overall (30-99) for a build: every setup change moves it.
 func build_rating(setup: CarSetup = null) -> float:
 	var chosen := setup if setup else GameManager.setup
-	return float(CarRatings.compute(chosen, setup_stats(chosen))["overall"])
+	return float(CarRatings.compute(chosen, setup_stats(chosen))["overall_raw"])
 
 
 ## The overall of the car every team starts with: the baseline car_overall works from.
@@ -630,68 +626,22 @@ func charge_cap(amount: int) -> void:
 		state()["cap_spent"] = int(state()["cap_spent"]) + amount
 
 
-func upgrade_cost(dept: String) -> int:
-	var level := int(state()["factory"][dept])
-	if dept == "rd":
-		return int(rd_tiers[level]["cost"]) if level < rd_tiers.size() else 0
-	return 2500 + level * 1800
+## Pit crew: the only factory upgrade left, paid with money. Faster stops.
+func pit_crew_cost() -> int:
+	var level := int(state()["factory"].get("pit", 0))
+	return 0 if level >= FACTORY_MAX else 2500 + level * 1800
 
 
-func upgrade(dept: String) -> String:
-	var level := int(state()["factory"][dept])
-	var max_level := rd_tiers.size() if dept == "rd" else FACTORY_MAX
-	if level >= max_level:
-		return "Already at maximum."
-	var cost := upgrade_cost(dept)
+func upgrade_pit_crew() -> String:
+	var cost := pit_crew_cost()
+	if cost <= 0:
+		return "The pit crew is already the best in the paddock."
 	if GameManager.money() < cost:
 		return "Not enough cash."
-	if cost > cap_left():
-		return "That would break the cost cap."
 	GameManager.add_money(-cost)
-	charge_cap(cost)
-	state()["factory"][dept] = level + 1
-	_sync_unlocks()
-	EventBus.inventory_changed.emit()
+	state()["factory"]["pit"] = int(state()["factory"].get("pit", 0)) + 1
 	GameManager.save()
 	return ""
-
-
-## Pay the engineers to pick, buy and fit the best available part for you (25% labour markup).
-func commission_package() -> String:
-	var best: VehiclePart = null
-	var best_slot := ""
-	var best_gain := 0.2
-	var before := build_rating()
-	for slot in CarSetup.SLOTS:
-		if slot == "ballast":
-			continue
-		for part: VehiclePart in PartDB.parts_in(CarSetup.SLOT_CATEGORY[slot]):
-			if GameManager.setup.parts.get(slot, "") == part.id or not GameManager.is_unlocked(part.id):
-				continue
-			var cost := 0 if GameManager.is_owned(part.id) else int(part.price * 1.25)
-			if cost > GameManager.money() or cost > cap_left():
-				continue
-			var old: String = GameManager.setup.parts.get(slot, "")
-			GameManager.setup.install(slot, part.id)
-			var gain := build_rating() - before
-			if old == "":
-				GameManager.setup.remove(slot)
-			else:
-				GameManager.setup.install(slot, old)
-			if gain > best_gain:
-				best_gain = gain
-				best = part
-				best_slot = slot
-	if best == null:
-		return "The engineers have nothing better to offer right now. Upgrade R&D or free up budget."
-	var price := 0 if GameManager.is_owned(best.id) else int(best.price * 1.25)
-	GameManager.add_money(-price)
-	charge_cap(price)
-	if not GameManager.is_owned(best.id):
-		GameManager.profile["owned_parts"].append(best.id)
-	GameManager.install_part(best_slot, best.id)
-	EventBus.inventory_changed.emit()
-	return "Engineers fitted %s (%s) for %s.  Car build +%.1f." % [best.display_name, CarSetup.SLOT_LABELS[best_slot], money_text(price), best_gain]
 
 
 # ---------------------------------------------------------------- season flow
@@ -819,8 +769,7 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 			_refresh_sponsor_offers()
 	var prize := 600 + points_scored * 120
 	var salaries := int(salary_total() / float(calendar.size()))
-	var f: Dictionary = c["factory"]
-	var upkeep := 150 * (int(f["aero"]) + int(f["power"]) + int(f["pit"]) + int(f["rd"]))
+	var upkeep := 150 * int(c["factory"].get("pit", 0))
 	var staff := int(engineer_salaries() / float(calendar.size()))
 	# Simulator programmes and the boss's own wage.
 	for id: String in lineup() + reserves():
@@ -837,7 +786,7 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	# --- a new week at the factory: research points and a fresh wind-tunnel allowance
 	c["last_best"] = best
 	var research := research_income()
-	c["rp"] = mini(MAX_RP, int(c["rp"]) + int(research["total"]))
+	add_rp(int(research["total"]))
 	c["tunnel_used"] = 0
 	var expected_best := int(round(int(my_team()["expectation"]) * 1.6 + 1.0))
 	var board_change := clampi(int((expected_best - best) * 1.5), -10, 10) + podiums * 3
@@ -979,7 +928,7 @@ func _event_facts(flags: Dictionary, mine: Array) -> Dictionary:
 		"board": int(c["board"]), "rep": int(c["reputation"]), "cash": GameManager.money(), "cap": int(float(c["cap_spent"]) / COST_CAP * 100.0), "fia": int(c["fia"]),
 		"audited": int(c["audited"]), "round": int(c["round"]), "position": pos, "expect": int(my_team()["expectation"]), "behind": pos - int(my_team()["expectation"]),
 		"morale": mini(int(d1["morale"]), int(d2["morale"])), "ego": int(maxf(float(d1["ego"]), float(d2["ego"]))), "no_number_one": int(str(c["number_one"]) == ""),
-		"no_sponsor": int((c["sponsor"] as Dictionary).is_empty()), "engineers": engineers().size(), "rp": int(c["rp"]), "illegal": illegal,
+		"no_sponsor": int((c["sponsor"] as Dictionary).is_empty()), "engineers": engineers().size(), "rp": rp(), "illegal": illegal,
 	}
 
 
@@ -1150,7 +1099,7 @@ func _apply_effects(effects: Dictionary, p: Dictionary, notes: PackedStringArray
 				c["promise"] = int(v)
 				notes.append("Podium promised within %d races" % int(v))
 			"rp":
-				c["rp"] = clampi(int(c["rp"]) + int(v), 0, MAX_RP)
+				add_rp(int(v))
 				notes.append("Research %+d" % int(v))
 			"tunnel":
 				c["tunnel_used"] = int(c.get("tunnel_used", 0)) - int(v)
@@ -1178,7 +1127,6 @@ func _apply_effects(effects: Dictionary, p: Dictionary, notes: PackedStringArray
 
 func end_career() -> void:
 	GameManager.profile["career"] = {}
-	GameManager.profile["story_progress"] = 0
 	GameManager.save()
 
 
@@ -1384,7 +1332,7 @@ func _switch_team(team_id: String) -> String:
 	c["reserves"] = []
 	c["number_one"] = ""
 	c["sponsor"] = {}
-	c["factory"] = {"aero": 0, "power": 0, "pit": 0, "rd": int(c["factory"]["rd"])}
+	c["factory"] = {"pit": 0}
 	c["board"] = 60
 	c["cap_spent"] = 0
 	c["car_bonus"] = 0.0
@@ -1642,12 +1590,9 @@ func _init_team_extras() -> void:
 		# New team: the office here already has a few people at their desks.
 		c["engineers"] = []
 		_generate_engineers(3, true)
-	c["rp"] = int(c.get("rp", 30))
 	c["last_best"] = 0
 	c["tunnel_used"] = 0
-	var first := {"id": "car1", "name": "%s-01" % my_team()["short"], "setup": GameManager.setup.to_dict(), "materials": {}, "tunnel": 0.0}
-	for area: String in MATERIAL_AREAS:
-		first["materials"][area] = 0
+	var first := {"id": "car1", "name": "%s-01" % my_team()["short"], "setup": GameManager.setup.to_dict(), "tunnel": 0.0}
 	c["cars"] = [first]
 	c["car_count"] = 1
 	c["active_car"] = "car1"
@@ -1839,7 +1784,7 @@ func set_active_car(id: String) -> void:
 func car_setup(c: Dictionary) -> CarSetup:
 	if c.get("id", "") == state().get("active_car", ""):
 		return GameManager.setup
-	return CarSetup.from_dict(c["setup"])
+	return GameManager.apply_dev(CarSetup.from_dict(c["setup"]))
 
 
 ## The car a driver races. Unassigned drivers get the first car.
@@ -1872,9 +1817,7 @@ func build_new_car() -> String:
 	charge_cap(NEW_CAR_COST)
 	sync_active_car()
 	c["car_count"] = int(c.get("car_count", cars().size())) + 1
-	var built := {"id": "car%d" % int(c["car_count"]), "name": "%s-%02d" % [my_team()["short"], int(c["car_count"])], "setup": (active_car()["setup"] as Dictionary).duplicate(true), "materials": {}, "tunnel": 0.0}
-	for area: String in MATERIAL_AREAS:
-		built["materials"][area] = 0
+	var built := {"id": "car%d" % int(c["car_count"]), "name": "%s-%02d" % [my_team()["short"], int(c["car_count"])], "setup": (active_car()["setup"] as Dictionary).duplicate(true), "tunnel": 0.0}
 	cars().append(built)
 	GameManager.save()
 	return ""
@@ -1895,18 +1838,20 @@ func scrap_car(id: String) -> String:
 	return "%s scrapped." % doomed["name"]
 
 
-## Overall of one car: the team's baseline, the build, the factory, materials and how much
-## the wind tunnel has taught you about it.
+## Overall of one car: the team's baseline, plus how far the build (parts, setup and
+## upgrade levels) is above the starter car on the car card, plus wind-tunnel knowledge.
 func car_overall(c: Dictionary) -> float:
 	if c.is_empty():
 		return 40.0
-	var f: Dictionary = state()["factory"]
-	var tiers := 0
-	for area: String in c["materials"]:
-		tiers += int(c["materials"][area])
+	return overall_for(car_setup(c), c)
+
+
+## The overall a build would have as this car (used to preview a part or an upgrade).
+func overall_for(setup: CarSetup, c: Dictionary = {}) -> float:
+	var car := c if not c.is_empty() else active_car()
 	var base: float = state()["team_cars"].get(state()["team"], 70.0)
-	return clampf(base + (build_rating(car_setup(c)) - _starter_rating()) * 0.8 + (int(f["aero"]) + int(f["power"])) * 1.5 + float(state()["car_bonus"])
-		+ tiers * MATERIAL_BONUS + float(c.get("tunnel", 0.0)) * TUNNEL_BONUS, 40.0, 99.0)
+	return clampf(base + (build_rating(setup) - _starter_rating()) * 0.8 + float(state()["car_bonus"])
+		+ float(car.get("tunnel", 0.0)) * TUNNEL_BONUS, 40.0, 99.0)
 
 
 ## 0-100: how well a car suits a driver's taste in balance and wing level.
@@ -1934,29 +1879,6 @@ func driver_car_rating(driver_id: String) -> float:
 
 func car_taste(d: Dictionary) -> String:
 	return "%s WITH %s" % [BALANCE_NAMES[clampi(int(d["likes_balance"]) + 1, 0, 2)], AERO_NAMES[clampi(int(d["likes_aero"]) + 1, 0, 2)]]
-
-
-## Research points for the next material tier on an area of a car (0 = already the best).
-func material_cost(c: Dictionary, area: String) -> int:
-	var tier := int(c["materials"].get(area, 0))
-	if tier >= MATERIAL_COSTS.size():
-		return 0
-	# A specialist in that field knows where to save.
-	var discount := 1.0 - best_engineer(str(MATERIAL_AREAS[area]["spec"])) / 400.0
-	return int(round(MATERIAL_COSTS[tier] * discount))
-
-
-func upgrade_material(car_id: String, area: String) -> String:
-	var c := car(car_id)
-	var cost := material_cost(c, area)
-	if cost <= 0:
-		return "Already the best material there is."
-	if int(state()["rp"]) < cost:
-		return "Needs %d research points - your engineers have produced %d." % [cost, int(state()["rp"])]
-	state()["rp"] = int(state()["rp"]) - cost
-	c["materials"][area] = int(c["materials"].get(area, 0)) + 1
-	GameManager.save()
-	return ""
 
 
 # ---------------------------------------------------------------- FIA regulations
@@ -2035,9 +1957,9 @@ func _new_season_rules() -> void:
 	var notes := PackedStringArray(["minimum weight %d kg" % int(rules["min_weight"]), "wing angles capped at %d" % int(rules["max_wing"]), "%d engineers per team" % int(rules["max_engineers"])])
 	if _rng.randf() < 0.6:
 		var pool: Array = []
-		for tier: Dictionary in rd_tiers:
-			if int(tier["level"]) >= 2:
-				pool.append_array(tier["unlocks"])
+		for id: Variant in PartDB.all_ids():
+			if PartDB.get_part(str(id)).research_cost >= 40:
+				pool.append(str(id))
 		var banned: String = pool[_rng.randi() % pool.size()]
 		rules["banned"] = [banned]
 		notes.append("the %s is BANNED" % PartDB.get_part(banned).display_name)
@@ -2336,20 +2258,25 @@ func today() -> int:
 	return int(state().get("date", 0))
 
 
-## What happens on a day: "race", "quali", "practice", "test" or "rest", with the round.
+## What happens on a day: "race", "quali", "practice" or "rest", with the round.
+## A race weekend is practice, qualifying, race; between weekends every day is practice
+## except three recovery days a fortnight: the day after a race, mid-week and Sunday.
 func day_event(day: int = -1) -> Dictionary:
 	var d := today() if day < 0 else day
 	for i in range(int(state()["round"]), calendar.size()):
-		var r := race_day(i)
-		match r - d:
+		var until := race_day(i) - d
+		if until < 0:
+			continue
+		match until:
 			0:
 				return {"type": "race", "round": i}
 			1:
 				return {"type": "quali", "round": i}
 			2:
-				return {"type": "practice", "round": i}
-			9:
-				return {"type": "test", "round": i}
+				return {"type": "practice", "round": i, "free_practice": true}
+			13, 10, 7:
+				return {"type": "rest", "round": i}
+		return {"type": "practice", "round": i}
 	return {"type": "rest", "round": int(state()["round"])}
 
 
@@ -2361,10 +2288,8 @@ func day_title(event: Dictionary) -> String:
 		"quali":
 			return "QUALIFYING  ·  %s" % name
 		"practice":
-			return "FREE PRACTICE  ·  %s" % name
-		"test":
-			return "TEST DAY"
-	return "FACTORY DAY"
+			return "FREE PRACTICE  ·  %s" % name if event.get("free_practice", false) else "PRACTICE DAY"
+	return "RECOVERY DAY"
 
 
 ## Next day. A race day cannot be skipped - it has to be raced (or simulated) first.
@@ -2373,6 +2298,12 @@ func next_day() -> bool:
 	var c := state()
 	if day_event()["type"] == "race" or season_over():
 		return false
+	if day_event()["type"] == "rest" and not day_done():
+		# A skipped recovery day still gets the physio in.
+		var choices := {}
+		for id: String in lineup() + reserves():
+			choices[id] = "physio"
+		apply_rest(choices)
 	c["date"] = today() + 1
 	_daily_news()
 	GameManager.save()
@@ -2383,8 +2314,10 @@ func next_day() -> bool:
 ## A race day is only done by racing, which moves the calendar on by itself.
 func day_done() -> bool:
 	match str(day_event()["type"]):
-		"practice", "test":
+		"practice":
 			return practice_done()
+		"rest":
+			return int(state().get("rest_day", -1)) == today()
 		"quali":
 			return int(state().get("quali_day", -1)) == today()
 		"race":
@@ -2441,7 +2374,7 @@ func _add_news(text: String) -> void:
 ## A little paddock news most days: rival developments, driver form, the forecast.
 func _daily_news() -> void:
 	var event := day_event()
-	if event["type"] in ["practice", "quali"]:
+	if event.get("free_practice", false) or event["type"] == "quali":
 		var r: Dictionary = calendar[int(event["round"])]
 		_add_news("FORECAST for %s: %d%% chance of rain." % [r["name"], int(float(r["rain"]) * 100.0)])
 		return
@@ -2498,10 +2431,10 @@ func run_practice(program: String, driver_ids: Array) -> Array:
 	match program:
 		"setup":
 			w["car"] = minf(1.5, float(w.get("car", 0.0)) + 0.6)
-			c["rp"] = mini(MAX_RP, int(c["rp"]) + 8)
+			add_rp(8)
 		"long_runs":
 			w["tyres"] = minf(10.0, float(w.get("tyres", 0.0)) + 5.0)
-			c["rp"] = mini(MAX_RP, int(c["rp"]) + 6)
+			add_rp(6)
 		"quali":
 			w["quali"] = maxf(-0.4, float(w.get("quali", 0.0)) - 0.15)
 	var rows: Array = []
@@ -2538,7 +2471,7 @@ func finish_practice_drive(laps: int) -> String:
 		c["weekend"] = {}
 	var bonus := minf(1.5, 0.35 * laps)
 	c["weekend"]["car"] = minf(1.5, float(c["weekend"].get("car", 0.0)) + bonus)
-	c["rp"] = mini(MAX_RP, int(c["rp"]) + 4 * laps)
+	add_rp(4 * laps)
 	GameManager.save()
 	return "PRACTICE: %d LAPS  ·  CAR +%.1f THIS WEEKEND  ·  +%d RESEARCH" % [laps, bonus, 4 * laps]
 
@@ -2624,3 +2557,40 @@ func _rate_from_form(d: Dictionary) -> void:
 	elif form < 0.0:
 		d["potential"] = maxf(float(d["pace"]), float(d["potential"]) + form * 0.05)
 	d["form_change"] = int(d.get("form_change", 0)) + driver_overall(d) - before
+
+
+# ---------------------------------------------------------------- recovery days
+
+const RECOVERY := {
+	"physio": {"name": "PHYSIO", "note": "FITNESS +15"},
+	"cryo": {"name": "ICE BATH", "note": "FIT +10  MOR +3"},
+	"mental": {"name": "MENTAL COACH", "note": "MORALE +8"},
+	"sim": {"name": "SIMULATOR", "note": "SKILL LIKE A RACE"},
+	"media": {"name": "MEDIA DAY", "note": "REP +1  MOR -3"},
+}
+
+
+## Applies each driver's recovery technique for today (driver id -> RECOVERY key).
+func apply_rest(choices: Dictionary) -> void:
+	var c := state()
+	for id: String in choices:
+		var d := driver(id)
+		if d.is_empty():
+			continue
+		match str(choices[id]):
+			"physio":
+				d["fitness"] = mini(100, fitness(d) + 15)
+			"cryo":
+				d["fitness"] = mini(100, fitness(d) + 10)
+				d["morale"] = mini(100, int(d["morale"]) + 3)
+			"mental":
+				d["morale"] = mini(100, int(d["morale"]) + 8)
+			"sim":
+				var gain := maxf(0.0, development_rate(d))
+				d["pace"] = minf(float(d["potential"]), float(d["pace"]) + gain)
+				d["racecraft"] = minf(99.0, float(d["racecraft"]) + gain * 0.8)
+			"media":
+				c["reputation"] = mini(100, int(c["reputation"]) + 1)
+				d["morale"] = maxi(5, int(d["morale"]) - 3)
+	c["rest_day"] = today()
+	GameManager.save()

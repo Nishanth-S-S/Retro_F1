@@ -22,10 +22,11 @@ var temperature := AMBIENT_TEMP
 var _torque_scale := 1.0
 
 
-func configure(part: VehiclePart) -> void:
+## `power_scale`: the team's engine upgrade level (1.0 = as designed).
+func configure(part: VehiclePart, power_scale: float = 1.0) -> void:
 	idle_rpm = part.stat("idle_rpm", 1600.0)
 	redline_rpm = part.stat("redline_rpm", 9500.0)
-	peak_power_kw = part.stat("power_kw", 200.0)
+	peak_power_kw = part.stat("power_kw", 200.0) * power_scale
 	throttle_response = part.stat("throttle_response", 1.0)
 	heat_generation = part.stat("heat_generation", 1.0)
 	torque_curve = Curve.new()

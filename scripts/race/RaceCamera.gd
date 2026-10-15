@@ -66,7 +66,7 @@ func add_shake(amount: float) -> void:
 
 ## A short rotational jolt, as if the car was knocked sideways.
 func kick(strength: float) -> void:
-	_kick = (0.03 + 0.05 * strength) * (1.0 if _rng.randf() < 0.5 else -1.0)
+	_kick = (0.006 + 0.01 * strength) * (1.0 if _rng.randf() < 0.5 else -1.0)
 
 
 func _process(delta: float) -> void:

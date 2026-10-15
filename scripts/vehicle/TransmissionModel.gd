@@ -18,15 +18,16 @@ var gear := 1               # -1 reverse, 1..n forward
 var shift_timer := 0.0
 
 
-func configure(part: VehiclePart) -> void:
+## `level`: the team's gearbox upgrade level - quicker shifts, a little less loss.
+func configure(part: VehiclePart, level: int = 0) -> void:
 	var list: Array = part.stats.get("ratios", [2.9, 2.2, 1.75, 1.42, 1.19, 1.0])
 	ratios = PackedFloat32Array()
 	for r: Variant in list:
 		ratios.append(float(r))
 	reverse_ratio = part.stat("reverse_ratio", 3.0)
 	final_drive = part.stat("final_drive", 3.95)
-	efficiency = part.stat("efficiency", 0.9)
-	shift_time = part.stat("shift_time", 0.2)
+	efficiency = minf(0.99, part.stat("efficiency", 0.9) + 0.005 * level)
+	shift_time = part.stat("shift_time", 0.2) * (1.0 - 0.1 * level)
 	reset()
 
 

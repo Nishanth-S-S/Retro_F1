@@ -1,6 +1,38 @@
 [
-  {"id": "ballast_0", "display_name": "No Ballast", "description": "Run the car as light as it can be.", "price": 0, "research_cost": 0, "mass": 0, "stats": {}},
-  {"id": "ballast_10", "display_name": "10 kg Ballast", "description": "A tungsten block you can slide along the floor to tune weight balance.", "price": 300, "research_cost": 0, "mass": 10, "stats": {}},
-  {"id": "ballast_20", "display_name": "20 kg Ballast", "description": "More mass means a bigger balance shift - and more weight to carry.", "price": 500, "research_cost": 0, "mass": 20, "stats": {}},
-  {"id": "ballast_30", "display_name": "30 kg Ballast", "description": "The heaviest block allowed. Powerful balance tool, noticeable penalty.", "price": 700, "research_cost": 0, "mass": 30, "stats": {}}
+ {
+  "id": "ballast_0",
+  "display_name": "No Ballast",
+  "description": "Run the car as light as it can be.",
+  "price": 0,
+  "research_cost": 0,
+  "mass": 0,
+  "stats": {}
+ },
+ {
+  "id": "ballast_10",
+  "display_name": "10 kg Ballast",
+  "description": "A tungsten block you can slide along the floor to tune weight balance.",
+  "price": 300,
+  "research_cost": 0,
+  "mass": 10,
+  "stats": {}
+ },
+ {
+  "id": "ballast_20",
+  "display_name": "20 kg Ballast",
+  "description": "More mass means a bigger balance shift - and more weight to carry.",
+  "price": 500,
+  "research_cost": 0,
+  "mass": 20,
+  "stats": {}
+ },
+ {
+  "id": "ballast_30",
+  "display_name": "30 kg Ballast",
+  "description": "The heaviest block allowed. Powerful balance tool, noticeable penalty.",
+  "price": 700,
+  "research_cost": 0,
+  "mass": 30,
+  "stats": {}
+ }
 ]
