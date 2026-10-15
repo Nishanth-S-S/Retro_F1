@@ -142,6 +142,9 @@ func load_profile() -> void:
 		profile["records"]["falcon_ridge"] = {"best_lap": profile["best_lap"], "best_sectors": profile["best_sectors"], "best_lap_trace": profile["best_lap_trace"], "best_lap_corners": profile["best_lap_corners"], "ghost_data": profile["ghost_data"]}
 	if not loaded.is_empty() and not loaded.has("camera_default_applied"):
 		settings["camera_rotation"] = true          # rotating camera became the default
+	# Nothing cached from the career that was open before (another slot) carries over.
+	Career.clear_weekend()
+	Career.last_note = ""
 	setup = CarSetup.from_dict(profile["car_setup"])
 	apply_dev(setup)
 	# Never keep a part installed that the player does not own.

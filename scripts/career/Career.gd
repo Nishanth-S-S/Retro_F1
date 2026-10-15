@@ -1354,11 +1354,18 @@ func _switch_team(team_id: String) -> String:
 # ---------------------------------------------------------------- race weekend
 
 var _weekend_sim: GPSim
+## Which career, round and race drivers the cached weekend belongs to, so switching save slot
+## (or a change of driver) never races another career's grid.
+var _weekend_key := ""
 
 
 ## The simulation for the upcoming race (qualifying already run). Kept until the race is booked.
 func weekend_sim() -> GPSim:
+	var key := "%d|%s|%s|%s|%s" % [SaveManager.slot, state().get("team", ""), state().get("season", 0), state().get("round", 0), ",".join(race_lineup())]
+	if _weekend_sim != null and key != _weekend_key:
+		clear_weekend()
 	if _weekend_sim == null:
+		_weekend_key = key
 		_weekend_sim = GPSim.new()
 		_weekend_sim.setup(race_entries(), next_round(), int(state()["factory"]["pit"]), int(Time.get_ticks_usec()))
 		_weekend_sim.pit_bonus += best_engineer("strategy") / 100.0 * 0.8
