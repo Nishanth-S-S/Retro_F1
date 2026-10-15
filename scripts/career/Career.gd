@@ -1512,6 +1512,13 @@ func finish_drive(track_position: int, completed: bool) -> Dictionary:
 			insert_at = rival_slots[track_position - 1]
 		elif not rival_slots.is_empty():
 			insert_at = int(rival_slots[rival_slots.size() - 1]) + 1
+		# The cars on track stand in for the whole race: the better you finish among them, the
+		# more of the cars simulated ahead of them you beat too. P1 on track wins the race.
+		if not rival_slots.is_empty():
+			var on_track: int = rival_slots.size() + 1
+			var ahead: int = rival_slots[0]
+			var share := float(on_track - clampi(track_position, 1, on_track)) / float(maxi(1, on_track - 1))
+			insert_at = maxi(0, insert_at - int(round(ahead * share)))
 		# Never place a finisher behind retired cars.
 		while insert_at > 0 and order[insert_at - 1]["dnf"]:
 			insert_at -= 1
