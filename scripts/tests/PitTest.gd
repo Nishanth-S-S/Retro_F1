@@ -10,6 +10,7 @@ func _ready() -> void:
 	Engine.physics_ticks_per_second = 480
 	Engine.max_physics_steps_per_frame = 64
 	GameManager.session_mode = GameManager.MODE_RACE
+	RaceManager.free_field_size = 8
 	var race := (load("res://scenes/Race.tscn") as PackedScene).instantiate() as RaceManager
 	add_child(race)
 	race.player.is_player = false

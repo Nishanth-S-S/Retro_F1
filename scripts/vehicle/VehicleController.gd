@@ -265,8 +265,8 @@ func _update_driver(delta: float) -> void:
 		style.update(self, delta)
 
 
-## The tyre budget: $100 a set, sized so pushing all the way to the planned stop (or the flag,
-## when there is no stop) spends about $90 of it. Same rule for every car.
+## The tyre budget: one full bar a set, sized so pushing all the way to the planned stop (or the flag,
+## when there is no stop) spends about 90% of it. Same rule for every car.
 func _set_tyre_budget() -> void:
 	if track == null or track.length <= 0.0:
 		return
@@ -277,7 +277,7 @@ func _set_tyre_budget() -> void:
 	physics.rear_tire.stint_scale = scale
 
 
-## 1 = new tyres ($100 left), 0 = gone (the worse axle).
+## 1 = new tyres (the whole budget left), 0 = gone (the worse axle).
 func tyre_life() -> float:
 	return minf(physics.front_tire.wear, physics.rear_tire.wear)
 
@@ -337,7 +337,7 @@ func _update_track_state() -> void:
 	surface_front = track.surface_at(track.lateral_offset(front_pos, track_index), track_index)
 	surface_rear = track.surface_at(track.lateral_offset(rear_pos, track_index), track_index)
 	on_curb = surface_front == VehiclePhysicsConfig.Surface.CURB or surface_rear == VehiclePhysicsConfig.Surface.CURB
-	off_track = not track.is_legal(lateral) and not track.in_pit_lane(progress, lateral)
+	off_track = not track.is_legal(lateral, track_index) and not track.in_pit_lane(progress, lateral)
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:

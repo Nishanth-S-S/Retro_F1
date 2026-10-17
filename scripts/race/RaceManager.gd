@@ -8,6 +8,8 @@ enum State { COUNTDOWN, RACING, FINISHED }
 const PPM := VehiclePhysicsConfig.PPM
 const RESET_PENALTY := 3.0
 const PLAYER_GRID_SLOT := 3
+## Cars in a free race (headless tests that fast-forward use fewer).
+static var free_field_size := 20
 const FINISH_DELAY := 2.2
 const PLAYER_COLOR := Color("e8eef6")
 
@@ -167,12 +169,14 @@ func _ready() -> void:
 		EventBus.driver_message.emit("%s  -  LOW GRIP" % WeatherFX.NAMES[weather], Color("7fd4ff"))
 	_camera.snap_to_target()
 	positions.update(cars, timers, track.length)
+	# On the grid: how wide this circuit is (6.32 car widths, narrower in a few places).
+	EventBus.driver_message.emit("TRACK %s" % track.width_text(), Color.WHITE)
 	# First race on this save: point out the controls (the countdown waits).
 	CoachMarks.run_once(self, "race", func() -> Array: return [
 		[_controls.steer_rect(), "STEER here with your left thumb: slide left and right."],
 		[_controls.pedal_rect(), _controls.pedal_hint()],
 		[_hud._map, "The MAP shows every car. Watch the weather in its corner."],
-		[_hud._status, "TYRES are a $100 budget that has to last to your pit stop. Hard acceleration and braking spend it fastest; the white tick shows where you should be. FUEL and DAMAGE too - arrows point to the pits when one runs low."],
+		[_hud._status, "TYRES are a budget that has to last to your pit stop. Hard acceleration and braking spend it fastest; keep the bar ahead of the white tick. FUEL and DAMAGE too - arrows point to the pits when one runs low."],
 		[_hud._box, "Tap BOX: the car slides itself into the pits, the crew does the work, then YOU accelerate out."],
 		[_hud._drs, "DRS lights up on straights when you're within a second of the car ahead. Tap it to open the wing; braking closes it."],
 		[_hud.marks["cam"], "CAM switches between the driver's view and the overhead view."],
@@ -227,13 +231,11 @@ func _spawn_cars() -> void:
 		return
 	var profiles: Array = []
 	if not GameManager.career_race.is_empty():
-		# Career grand prix: the seven cars around you on the real grid, in grid order.
+		# Career grand prix: the nineteen cars around you on the real grid, in grid order.
 		profiles = GameManager.career_race["rivals"]
 		player.driver_name = GameManager.career_race["driver_name"]
 	else:
-		var data: Variant = SaveManager.load_json("res://data/progression/ai_drivers.json")
-		profiles = data if data is Array else []
-		profiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["pace"]) > float(b["pace"]))
+		profiles = _free_field()
 	var slot := 0
 	for i in profiles.size():
 		var profile: Dictionary = profiles[i]
@@ -261,6 +263,30 @@ func _spawn_cars() -> void:
 		slot += 1
 	for driver in drivers:
 		driver.others = cars
+
+
+## A free race is a full Formula One grid: nineteen real drivers in their team colours, each
+## with their card's attributes, quickest cars first. Their car setups come from ai_drivers.json.
+func _free_field() -> Array:
+	var setups: Variant = SaveManager.load_json("res://data/progression/ai_drivers.json")
+	var base: Variant = SaveManager.load_json("res://data/career/drivers.json")
+	var teams := {}
+	for t: Dictionary in Career.teams:
+		teams[t["id"]] = t
+	var out: Array = []
+	if base is Array:
+		for d: Dictionary in base:
+			if d.get("reserve", false) or not teams.has(d["team"]):
+				continue
+			var t: Dictionary = teams[d["team"]]
+			var template: Dictionary = (setups as Array)[out.size() % (setups as Array).size()] if setups is Array and not (setups as Array).is_empty() else {}
+			out.append({"name": d["name"], "color": t["color"], "color2": t["color2"],
+				"pace": clampf(0.9 + (float(t["car"]) - 75.0) * 0.003, 0.86, 0.98), "braking_accuracy": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97),
+				"consistency": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97), "aggression": clampf(float(d.get("ego", 50)) / 100.0, 0.3, 0.9),
+				"tire_management": 0.7, "error_rate": clampf((100.0 - float(d["consistency"])) / 170.0, 0.03, 0.2), "wet": clampf(float(d.get("wet", 75)) / 100.0, 0.4, 1.0),
+				"attrs": Career.driver_attributes(d), "setup": template.get("setup", {})})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["pace"]) > float(b["pace"]))
+	return out.slice(0, free_field_size - 1)
 
 
 func _ai_setup(overrides: Dictionary) -> CarSetup:

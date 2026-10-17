@@ -39,6 +39,7 @@ func _ready() -> void:
 	where.add_child(facts)
 	facts.add_child(UIKit.label(str(GameManager.TRACK_NAMES.get(track_id, "")), 34))
 	facts.add_child(UIKit.label("%s   ·   %s   ·   %s" % [Career.format_label(round_info), GPSim.WEATHER_NAMES[weather], TrackTheme.label(track_id)], 18, UIKit.TEXT_DIM))
+	facts.add_child(UIKit.label("TRACK %s" % TrackData.load_track("res://data/tracks/%s.json" % track_id).width_text(), 14, UIKit.TEXT_DIM))
 	for car in _sim.player_cars():
 		var faults := Career.car_violations(Career.car_for(car["id"]))
 		if not faults.is_empty():

@@ -341,18 +341,24 @@ func prepare_drive() -> void:
 	GameManager.start_session(GameManager.MODE_RACE)
 
 
-## Sets up the on-track race: you against the seven cars around you on the grid.
+## Cars in a race you drive (you plus nineteen rivals).
+const ON_TRACK := 20
+
+
+## Sets up the on-track race: you against the nineteen cars around you on the grid.
 func build_drive() -> void:
 	var sim := weekend()
 	var index := 0
 	for i in sim.cars.size():
 		if sim.cars[i]["id"] == "me":
 			index = i
-	var start := clampi(index - 3, 0, sim.cars.size() - 8)
+	# Twenty cars on track: the grid around you (the whole field when it is twenty or fewer).
+	var on_track := mini(ON_TRACK, sim.cars.size())
+	var start := clampi(index - ON_TRACK / 2, 0, sim.cars.size() - on_track)
 	var mine_car := float(my_team()["car"])
 	var rivals: Array = []
 	var parts: Dictionary = series()["car"]
-	for i in range(start, start + 8):
+	for i in range(start, start + on_track):
 		var car: Dictionary = sim.cars[i]
 		if car["id"] == "me":
 			continue

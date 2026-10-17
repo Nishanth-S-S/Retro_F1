@@ -1515,7 +1515,11 @@ func quick_sim() -> Dictionary:
 	return report
 
 
-## Sets up the on-track race: you drive `driver_id` against the seven cars around you on the grid.
+## Cars in a race you drive (you plus nineteen rivals).
+const ON_TRACK := 20
+
+
+## Sets up the on-track race: you drive `driver_id` against the nineteen cars around you on the grid.
 ## One-line note for HQ to show when it next opens (e.g. after a practice drive).
 var last_note := ""
 ## Lap times set in this weekend's qualifying, per driver.
@@ -1560,7 +1564,9 @@ func build_drive(driver_id: String) -> void:
 	for i in sim.cars.size():
 		if sim.cars[i]["id"] == driver_id:
 			index = i
-	var start := clampi(index - 3, 0, sim.cars.size() - 8)
+	# Twenty cars on track: the grid around you (the whole field when it is twenty or fewer).
+	var on_track := mini(ON_TRACK, sim.cars.size())
+	var start := clampi(index - ON_TRACK / 2, 0, sim.cars.size() - on_track)
 	var rivals: Array = []
 	# You drive the car assigned to this driver; it becomes the car in the garage.
 	set_active_car(str(car_for(driver_id)["id"]))
@@ -1571,7 +1577,7 @@ func build_drive(driver_id: String) -> void:
 	GameManager.race_laps = GameManager.SPRINT_LAPS if sprint else GameManager.RACE_LAPS
 	# Grand Prix rule: in the dry every car must use two different dry compounds - one stop.
 	GameManager.mandatory_stop = not sprint and sim.weather == 0
-	for i in range(start, start + 8):
+	for i in range(start, start + on_track):
 		var car: Dictionary = sim.cars[i]
 		if car["id"] == driver_id:
 			continue

@@ -41,11 +41,12 @@ func update(delta: float, me: VehicleController, others: Array, track: TrackData
 		var wants_pass := closing > lerpf(2.0, 0.3, aggression) or ahead_gap < 9.0
 		if wants_pass and _commit <= 0.0 and not passing:
 			# Go for the side with more room.
-			_side = 1.0 if (track.half_width - ahead.lateral) > (track.half_width + ahead.lateral) else -1.0
+			var room := track.half_width_at(ahead.track_index)
+			_side = 1.0 if (room - ahead.lateral) > (room + ahead.lateral) else -1.0
 			_commit = MIN_COMMIT_TIME
 			passing = true
 		if passing:
-			var limit := track.half_width - 1.3
+			var limit := track.half_width_at(me.track_index) - 1.3
 			var desired := clampf(ahead.lateral + _side * PASS_OFFSET, -limit, limit)
 			target = desired - line_offset
 			if absf(desired - ahead.lateral) < LANE_WIDTH * 0.8:

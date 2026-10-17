@@ -31,12 +31,16 @@ func _generate() -> void:
 	for pass_index in 3:
 		narrow = TrackData.smooth(narrow, 3)
 		wide = TrackData.smooth(wide, 10)
-	var max_offset := track.half_width - EDGE_MARGIN
 	offsets.resize(n)
 	for i in n:
+		var max_offset := track.half_width_at(i) - EDGE_MARGIN
 		var raw := (narrow[i] - 0.8 * wide[i]) * LINE_GAIN
 		offsets[i] = max_offset * tanh(raw / max_offset)
 	offsets = TrackData.smooth(TrackData.smooth(offsets, 3), 3)
+	# Smoothing must not carry the line off the road where the track narrows.
+	for i in n:
+		var room := track.half_width_at(i) - EDGE_MARGIN
+		offsets[i] = clampf(offsets[i], -room, room)
 	points.resize(n)
 	curve = Curve2D.new()
 	for i in n:

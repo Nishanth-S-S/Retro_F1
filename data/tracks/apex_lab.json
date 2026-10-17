@@ -2,6 +2,7 @@
  "id": "apex_lab",
  "name": "Apex Lab",
  "half_width": 10.0,
+ "fixed_width": true,
  "curb_width": 1.8,
  "runoff": 16.0,
  "start_offset_m": 40,

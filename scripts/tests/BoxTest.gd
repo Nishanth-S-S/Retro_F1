@@ -14,6 +14,7 @@ func _ready() -> void:
 	GameManager.session_mode = GameManager.MODE_RACE
 	GameManager.session_weather = 0
 	GameManager.mandatory_stop = true
+	RaceManager.free_field_size = 8          # fast-forwarding twenty cars takes too long here
 	var race := (load("res://scenes/Race.tscn") as PackedScene).instantiate() as RaceManager
 	add_child(race)
 	var ok := GameManager.race_laps == 3

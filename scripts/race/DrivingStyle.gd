@@ -151,7 +151,7 @@ func _track_corner(car: VehicleController, progress: float, battle: Vector2, del
 				_c["lock"] = float(_c["lock"]) + delta
 			if kmh < float(_c["apex_kmh"]):
 				_c["apex_kmh"] = kmh
-				_c["apex_lat"] = car.lateral * float(_c["dir"]) / maxf(_track.half_width, 1.0)
+				_c["apex_lat"] = car.lateral * float(_c["dir"]) / maxf(_track.half_width_at(car.track_index), 1.0)
 				_c["min_at"] = -to_apex
 			if to_apex <= 0.0:
 				_phase = "exit"

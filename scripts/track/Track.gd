@@ -56,6 +56,14 @@ func _quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2, color: Color) -> void
 	_st.add_vertex(Vector3(a.x, a.y, 0)); _st.add_vertex(Vector3(c.x, c.y, 0)); _st.add_vertex(Vector3(d.x, d.y, 0))
 
 
+## A strip measured from the local track edge on one side (side = -1 left, +1 right): from
+## `from_edge` to `to_edge` metres outside it. Follows narrow sections.
+func _edge_strip(i: int, side: float, from_edge: float, to_edge: float, color: Color) -> void:
+	var a := data.half_width_at(i)
+	var b := data.half_width_at(i + 1)
+	_quad(_edge(i, side * (a + from_edge)), _edge(i + 1, side * (b + from_edge)), _edge(i + 1, side * (b + to_edge)), _edge(i, side * (a + to_edge)), color)
+
+
 func _strip_segment(i: int, inner: float, outer: float, color: Color) -> void:
 	_quad(_edge(i, inner), _edge(i + 1, inner), _edge(i + 1, outer), _edge(i, outer), color)
 
@@ -88,36 +96,37 @@ func _build_mesh() -> void:
 	# Gravel traps.
 	for i in n:
 		var j := data.wrap_index(i + 1)
+		var wi := data.half_width_at(i)
+		var wj := data.half_width_at(i + 1)
 		if data.gravel_left[i] == 1 and data.gravel_left[j] == 1:
-			_quad(_edge(i, -hw), _edge(i + 1, -hw), _edge(i + 1, -data.barrier_left[j]), _edge(i, -data.barrier_left[i]), gravel)
+			_quad(_edge(i, -wi), _edge(i + 1, -wj), _edge(i + 1, -data.barrier_left[j]), _edge(i, -data.barrier_left[i]), gravel)
 		if data.gravel_right[i] == 1 and data.gravel_right[j] == 1:
-			_quad(_edge(i, hw), _edge(i + 1, hw), _edge(i + 1, data.barrier_right[j]), _edge(i, data.barrier_right[i]), gravel)
-	# Asphalt: two alternating tones every few samples give the surface a readable flow at speed.
+			_quad(_edge(i, wi), _edge(i + 1, wj), _edge(i + 1, data.barrier_right[j]), _edge(i, data.barrier_right[i]), gravel)
+	# Asphalt, 6.32 car widths wide (narrower in a few sections): two alternating tones every few
+	# samples give the surface a readable flow at speed.
 	for i in n:
-		_strip_segment(i, -hw, hw, COLOR_ASPHALT if (i / 3) % 2 == 0 else COLOR_ASPHALT_ALT)
+		var wi := data.half_width_at(i)
+		var wj := data.half_width_at(i + 1)
+		_quad(_edge(i, -wi), _edge(i + 1, -wj), _edge(i + 1, wj), _edge(i, wi), COLOR_ASPHALT if (i / 3) % 2 == 0 else COLOR_ASPHALT_ALT)
 	# Painted run-off beyond the curbs where there is no gravel, striped like a modern track.
 	for i in n:
 		for side: float in [-1.0, 1.0]:
 			var curb := data.curb_right[i] if side > 0.0 else data.curb_left[i]
 			var trap := data.gravel_right[i] if side > 0.0 else data.gravel_left[i]
 			if curb == 1 and trap == 0:
-				var inner := hw + data.curb_width
 				var color := Color("3a3d45") if (i / 2) % 3 != 0 else (Color("2f5fae") if side > 0.0 else Color("b8312c"))
-				if side > 0.0:
-					_strip_segment(i, inner, inner + 5.0, color)
-				else:
-					_strip_segment(i, -inner - 5.0, -inner, color)
+				_edge_strip(i, side, data.curb_width, data.curb_width + 5.0, color)
 	# Curbs.
 	for i in n:
 		var curb_color := COLOR_CURB_RED if i % 2 == 0 else COLOR_CURB_WHITE
 		if data.curb_left[i] == 1:
-			_strip_segment(i, -hw - data.curb_width, -hw, curb_color)
+			_edge_strip(i, -1.0, 0.0, data.curb_width, curb_color)
 		if data.curb_right[i] == 1:
-			_strip_segment(i, hw, hw + data.curb_width, curb_color)
+			_edge_strip(i, 1.0, 0.0, data.curb_width, curb_color)
 	# White edge lines.
 	for i in n:
-		_strip_segment(i, -hw, -hw + 0.3, COLOR_LINE)
-		_strip_segment(i, hw - 0.3, hw, COLOR_LINE)
+		_edge_strip(i, -1.0, -0.3, 0.0, COLOR_LINE)
+		_edge_strip(i, 1.0, -0.3, 0.0, COLOR_LINE)
 	_build_start_area()
 	_build_pit_lane()
 	# Barriers.
@@ -157,8 +166,8 @@ func _build_start_area() -> void:
 			var color := Color.WHITE if (c + row) % 2 == 0 else Color(0.08, 0.08, 0.09)
 			var origin := p + nrm * (-hw * PPM + c * cell) + t * (row * cell - cell)
 			_quad(origin, origin + nrm * cell, origin + nrm * cell + t * cell, origin + t * cell, color)
-	# Grid boxes.
-	for slot in 8:
+	# Grid boxes for a full twenty-car grid.
+	for slot in 20:
 		var info := data.grid_slot(slot)
 		var pos: Vector2 = info["position"]
 		var ang: float = info["rotation"]
@@ -226,7 +235,7 @@ func _build_scenery() -> void:
 			for k in 3:
 				var j := data.wrap_index(i + k * 12 - 8)
 				var side := 1.0 if data.gravel_left[next] == 1 else -1.0
-				var pos := _edge(j, side * (data.half_width + 3.0))
+				var pos := _edge(j, side * (data.half_width_at(j) + 3.0))
 				_rect(pos, Vector2(0.25, 1.1) * PPM, data.tangents[j].angle(), Color("f5c542"))
 				for b in (3 - k):
 					_rect(pos + data.tangents[j] * 0.3 * PPM + data.normals[j] * (b - (2 - k) * 0.5) * 0.6 * PPM, Vector2(0.1, 0.18) * PPM, data.tangents[j].angle(), Color(0.1, 0.1, 0.1))

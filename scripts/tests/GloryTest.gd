@@ -28,7 +28,7 @@ func _ready() -> void:
 	# A driven race: the on-track field and a win on track books as a win.
 	Glory.build_drive()
 	var info: Dictionary = GameManager.career_race
-	_check((info["rivals"] as Array).size() == 7 and info.has("setup") and info.has("attrs") and int(info["grid_slot"]) == 6, "drive: 7 rivals on track, you start 7th of the eight (P20 behind you), your stats drive the car")
+	_check((info["rivals"] as Array).size() == 19 and info.has("setup") and info.has("attrs") and int(info["grid_slot"]) == 18, "drive: the whole 20-car F3 field on track, you start P19, your stats drive the car")
 	# The race scene takes the series car, your livery and your grid slot; the AI drives for you.
 	Engine.time_scale = 8.0
 	Engine.physics_ticks_per_second = 480
@@ -36,13 +36,14 @@ func _ready() -> void:
 	AudioServer.set_bus_mute(0, true)
 	var race := (load("res://scenes/Race.tscn") as PackedScene).instantiate() as RaceManager
 	add_child(race)
-	_check(race.player.setup.parts["engine"] == "engine_compact_4" and race.cars.size() == 8, "race scene: F3 car (%s), 8 cars on track" % race.player.setup.parts["engine"])
+	_check(race.player.setup.parts["engine"] == "engine_compact_4" and race.cars.size() == 20, "race scene: F3 car (%s), 20 cars on track" % race.player.setup.parts["engine"])
 	race.player.is_player = false
 	race.player.takes_damage = false
 	var driver := AIDriver.new()
 	race.player.add_child(driver)
 	driver.setup(race.player, race.line, {"pace": 0.97, "error_rate": 0.0, "attrs": info["attrs"]}, 3)
 	driver.others = race.cars
+	driver.needs_recovery.connect(race._recover_car)
 	var waited := 0.0
 	while race.state != RaceManager.State.FINISHED and waited < 1500.0:
 		await get_tree().create_timer(1.0).timeout

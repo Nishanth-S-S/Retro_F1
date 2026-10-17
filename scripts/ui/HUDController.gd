@@ -433,9 +433,18 @@ func _paint_board(a: Control) -> void:
 	var leader := order[0]
 	var lead_total := _total_progress(leader)
 	a.draw_rect(Rect2(Vector2.ZERO, a.size), Color(0, 0, 0, 0.5))
+	# Twenty cars do not fit: the top three, then the cars around you.
+	var shown: Array[int] = []
+	var me := order.find(manager.player)
 	for i in order.size():
+		if i < 3 or (absi(i - me) <= 2 and shown.size() < 8) or (order.size() <= 8):
+			shown.append(i)
+	for row in shown.size():
+		var i := shown[row]
 		var car := order[i]
-		var y := 3.0 + i * 23.0
+		var y := 3.0 + row * 23.0
+		if row > 0 and shown[row - 1] != i - 1:
+			a.draw_line(Vector2(6, y - 1.0), Vector2(a.size.x - 6.0, y - 1.0), DIM, 1.0)
 		if car == manager.player:
 			a.draw_rect(Rect2(0, y, a.size.x, 22), Color(0.78, 0.13, 0.12, 0.9))
 		a.draw_rect(Rect2(26, y + 4.0, 6, 14), car.body_color)
@@ -472,15 +481,12 @@ func _paint_status(a: Control) -> void:
 	_bar(a, y, "TYRES", life, RED if hot and fmod(_pulse, 0.5) < 0.25 else wear_col)
 	var compound: Color = CarVisual.COMPOUND_COLORS.get(car.setup.parts.get("tires", ""), Color.WHITE)
 	a.draw_circle(Vector2(50, y + 7.0), 5.0, compound)
-	# The tyre budget: dollars left of the $100 this set started with, and a tick for where an
-	# even spend to the planned stop would be by now (left of the tick = overspending).
+	# The tyre budget: the bar is what is left to spend before the stop, and the tick is where
+	# an even spend to the planned stop would be by now (bar short of the tick = overspending).
 	var target := car.tyre_target()
 	if target >= 0.0:
 		var tx := 58.0 + (a.size.x - 58.0) * target
-		a.draw_rect(Rect2(tx - 1.5, y - 2.0, 3.0, 18.0), Color(1, 1, 1, 0.95))
-	var money := "$%d" % int(round(life * 100.0))
-	a.draw_string_outline(f, Vector2(0, y + 12.0), money, HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, 4, Color(0, 0, 0, 0.8))
-	a.draw_string(f, Vector2(0, y + 12.0), money, HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, AMBER if target >= 0.0 and life < target - 0.05 else WHITE)
+		a.draw_rect(Rect2(tx - 1.5, y - 2.0, 3.0, 18.0), AMBER if life < target - 0.05 else Color(1, 1, 1, 0.95))
 	y += 24.0
 	var hurt := car.damage / 100.0
 	_bar(a, y, "DAMAGE", hurt, GREEN.lerp(AMBER, clampf(hurt * 2.0, 0.0, 1.0)).lerp(RED, clampf(hurt * 2.0 - 1.0, 0.0, 1.0)))
@@ -560,6 +566,8 @@ func _paint_map(a: Control) -> void:
 	a.draw_string(f, Vector2(6, 14), GameManager.TRACK_NAMES.get(GameManager.track_id, "TRACK"), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, WHITE)
 	var wet := manager.weather
 	a.draw_string(f, Vector2(0, 14), WeatherFX.NAMES[wet], HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 6.0, 10, Color("7fd4ff") if wet > 0 else AMBER)
+	# The circuit width: 6.32 car widths, the FIA ratio for a permanent circuit.
+	a.draw_string(f, Vector2(6, a.size.y - 6.0), "%.2f CAR WIDTHS WIDE" % (manager.track.half_width * 2.0 / TrackData.CAR_WIDTH), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1, 1, 1, 0.7))
 	a.draw_polyline(_map_points, Color(0, 0, 0, 0.9), 7.0)
 	a.draw_polyline(_map_points, Color(0.9, 0.92, 0.95), 3.0)
 	# Start / finish line.

@@ -10,10 +10,21 @@ const CURB_CURVATURE := 0.0065       # corners tighter than ~150 m radius get cu
 const GRAVEL_CURVATURE := 0.014      # corners tighter than ~70 m radius get gravel outside
 const CORNER_CURVATURE := 0.0042
 const LEGAL_MARGIN := 2.2            # metres beyond the curb that still counts as "on track"
+## Width of the car as drawn (outer edge of the rear wheels), metres.
+const CAR_WIDTH := 2.0
+## Official FIA permanent circuit width : 2026 F1 car width = 6.32 : 1.
+const WIDTH_RATIO := 6.32
+## A few sections squeeze down to this many car widths (tight corners away from the pits).
+const NARROW_RATIO := 4.6
+## Metres over which a narrow section blends in and out.
+const NARROW_BLEND := 60.0
 
 var id := ""
 var display_name := ""
-var half_width := 7.0
+## Standard half width: half of 6.32 car widths. `widths` holds the half width at every sample.
+var half_width := CAR_WIDTH * WIDTH_RATIO * 0.5
+var widths := PackedFloat32Array()
+var narrow_sections: Array[Vector2] = []     # progress from / to, metres
 var curb_width := 1.6
 var runoff := 13.0
 var curve := Curve2D.new()           # centreline in pixels (shown through a Path2D)
@@ -53,7 +64,8 @@ static func load_track(path: String) -> TrackData:
 func _build(data: Dictionary) -> void:
 	id = data.get("id", "track")
 	display_name = data.get("name", "Circuit")
-	half_width = float(data.get("half_width", 7.0))
+	# Every real circuit is 6.32 car widths wide; a test track can keep its own width.
+	half_width = float(data.get("half_width", 7.0)) if data.get("fixed_width", false) else CAR_WIDTH * WIDTH_RATIO * 0.5
 	curb_width = float(data.get("curb_width", 1.6))
 	runoff = float(data.get("runoff", 13.0))
 	var raw: Array = data.get("control_points", [])
@@ -62,14 +74,15 @@ func _build(data: Dictionary) -> void:
 		ctrl.append(Vector2(float(p[0]), float(p[1])) * PPM * float(data.get("scale", 1.0)))
 	_build_curve(ctrl)
 	_sample(float(data.get("start_offset_m", 0.0)) * PPM)
-	_classify()
-	_find_corners()
-	var fractions: Array = data.get("sector_fractions", [0.333, 0.666])
-	sector_bounds = PackedFloat32Array([float(fractions[0]) * length, float(fractions[1]) * length])
 	var pit: Dictionary = data.get("pit", {})
 	pit_start = float(pit.get("start", 40.0))
 	pit_end = float(pit.get("end", 300.0))
 	pit_box = float(pit.get("box", 170.0))
+	_find_corners()
+	_compute_widths(data)
+	_classify()
+	var fractions: Array = data.get("sector_fractions", [0.333, 0.666])
+	sector_bounds = PackedFloat32Array([float(fractions[0]) * length, float(fractions[1]) * length])
 	var gates := int(data.get("checkpoint_count", 12))
 	checkpoints.resize(gates)
 	for i in gates:
@@ -152,7 +165,6 @@ func _classify() -> void:
 					gravel_right[j] = 1
 	# Barriers follow the track at a fixed offset, pulled in on the inside of tight corners
 	# so the offset line never folds over itself.
-	var base := half_width + curb_width + runoff
 	var left := PackedFloat32Array()
 	var right := PackedFloat32Array()
 	left.resize(count)
@@ -161,7 +173,8 @@ func _classify() -> void:
 	for i in count:
 		var k := very_wide[i]
 		var radius := 1.0 / maxf(absf(k), 0.0001)
-		var inside := maxf(half_width + curb_width + 1.5, minf(base, radius * 0.62))
+		var base := widths[i] + curb_width + runoff
+		var inside := maxf(widths[i] + curb_width + 1.5, minf(base, radius * 0.62))
 		left[i] = inside if k < 0.0 else base
 		right[i] = inside if k > 0.0 else base
 	barrier_left = smooth(smooth(left, 5), 5)
@@ -169,6 +182,63 @@ func _classify() -> void:
 	for i in count:
 		barrier_left[i] = minf(barrier_left[i], left[i] + 2.0)
 		barrier_right[i] = minf(barrier_right[i], right[i] + 2.0)
+
+
+## The track is 6.32 car widths everywhere except a few narrow sections: the tightest corners
+## that are clear of the pit lane and the grid (or the sections a track file lists in "narrow").
+func _compute_widths(data: Dictionary) -> void:
+	widths.resize(count)
+	widths.fill(half_width)
+	narrow_sections.clear()
+	if data.get("fixed_width", false):
+		return
+	var listed: Array = data.get("narrow", [])
+	for pair: Array in listed:
+		narrow_sections.append(Vector2(float(pair[0]), float(pair[1])))
+	if listed.is_empty():
+		var tight := corners.duplicate()
+		tight.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["radius"]) < float(b["radius"]))
+		var wanted := 3 if length > 5000.0 else 2
+		for c: Dictionary in tight:
+			var from := float(c["start"]) - 20.0
+			var to := float(c["end"])
+			var clear_of_pits := from > pit_end + 120.0 and to < length - 260.0
+			var apart := true
+			for other: Vector2 in narrow_sections:
+				apart = apart and (to < other.x - 300.0 or from > other.y + 300.0)
+			if clear_of_pits and apart and float(c["radius"]) < 120.0:
+				narrow_sections.append(Vector2(from, to))
+			if narrow_sections.size() >= wanted:
+				break
+	var narrow := CAR_WIDTH * NARROW_RATIO * 0.5
+	for i in count:
+		var p := i * spacing
+		var squeeze := 0.0
+		for sec: Vector2 in narrow_sections:
+			var into := minf(p - (sec.x - NARROW_BLEND), (sec.y + NARROW_BLEND) - p)
+			squeeze = maxf(squeeze, smoothstep(0.0, NARROW_BLEND, into))
+		widths[i] = lerpf(half_width, narrow, squeeze)
+
+
+## Half width of the track at sample `index` (metres).
+func half_width_at(index: int) -> float:
+	return widths[posmod(index, count)] if widths.size() == count else half_width
+
+
+## "12.6 M WIDE  ·  6.32 CAR WIDTHS  ·  NARROWS TO 9.2 M" for the screens that show the track.
+func width_text() -> String:
+	var text := "%.1f M WIDE  ·  %.2f CAR WIDTHS" % [half_width * 2.0, half_width * 2.0 / CAR_WIDTH]
+	if narrowest() < half_width - 0.1:
+		text += "  ·  NARROWS TO %.1f M" % (narrowest() * 2.0)
+	return text
+
+
+## Narrowest half width anywhere on the lap.
+func narrowest() -> float:
+	var low := half_width
+	for w in widths:
+		low = minf(low, w)
+	return low
 
 
 func _find_corners() -> void:
@@ -253,18 +323,19 @@ func surface_at(lateral: float, index: int) -> int:
 	var d := absf(lateral)
 	if lateral < 0.0 and d <= half_width + PIT_WIDTH and index * spacing >= pit_start and index * spacing <= pit_end:
 		return VehiclePhysicsConfig.Surface.ASPHALT
-	if d <= half_width:
+	var w := half_width_at(index)
+	if d <= w:
 		return VehiclePhysicsConfig.Surface.ASPHALT
 	var right := lateral > 0.0
-	if d <= half_width + curb_width and (curb_right[index] if right else curb_left[index]) == 1:
+	if d <= w + curb_width and (curb_right[index] if right else curb_left[index]) == 1:
 		return VehiclePhysicsConfig.Surface.CURB
-	if (gravel_right[index] if right else gravel_left[index]) == 1 and d > half_width + 1.0:
+	if (gravel_right[index] if right else gravel_left[index]) == 1 and d > w + 1.0:
 		return VehiclePhysicsConfig.Surface.GRAVEL
 	return VehiclePhysicsConfig.Surface.GRASS
 
 
-func is_legal(lateral: float) -> bool:
-	return absf(lateral) <= half_width + curb_width + LEGAL_MARGIN
+func is_legal(lateral: float, index: int = -1) -> bool:
+	return absf(lateral) <= (half_width_at(index) if index >= 0 else half_width) + curb_width + LEGAL_MARGIN
 
 
 func position_at(progress: float, lateral: float = 0.0) -> Vector2:

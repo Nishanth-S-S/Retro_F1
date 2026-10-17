@@ -197,7 +197,14 @@ func _race() -> void:
 	race.player.add_child(driver)
 	driver.setup(race.player, race.line, {"pace": 0.95, "error_rate": 0.0, "track_grip": WeatherFX.grip(2)}, 3)
 	driver.others = race.cars
+	await _shot("u_grid", 0.6)
 	await _shot("v_race_wet", 9.0)
+	print("fps with %d cars: %d" % [race.cars.size(), Engine.get_frames_per_second()])
+	# A narrow section of the track (4.6 car widths instead of 6.32).
+	if not race.track.narrow_sections.is_empty():
+		var mid := (race.track.narrow_sections[0].x + race.track.narrow_sections[0].y) * 0.5
+		race.player.place(race.track.position_at(mid - 60.0), race.track.heading_at(mid - 60.0))
+		await _shot("v_narrow", 0.8)
 	# A pit stop: hand the car back and roll it into the lane.
 	driver.queue_free()
 	await get_tree().physics_frame
