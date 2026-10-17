@@ -358,8 +358,10 @@ func _driver_card(parent: Control, id: String) -> void:
 	side.add_theme_constant_override("separation", 6)
 	line.add_child(side)
 	side.add_child(Art.chip("OVR", Career.driver_overall(d), UIKit.WARM))
-	side.add_child(Art.make(Vector2(74, 56), func(a: Control) -> void:
-		PixelArt.draw_helmet(a, Rect2(Vector2.ZERO, a.size), Color(str(team["color"])), Color(str(team["color2"])), int(d["number"]))))
+	# Only the two race drivers get a helmet; reserves sit on the bench without one.
+	if racing:
+		side.add_child(Art.make(Vector2(74, 56), func(a: Control) -> void:
+			PixelArt.draw_helmet(a, Rect2(Vector2.ZERO, a.size), Color(str(team["color"])), Color(str(team["color2"])), int(d["number"]))))
 	box.add_child(Art.rating_bar("MORALE", float(d["morale"]), UIKit.GOOD if int(d["morale"]) >= 45 else UIKit.BAD, 420.0))
 	box.add_child(Art.rating_bar("FITNESS", Career.fitness(d), UIKit.GOOD if Career.fitness(d) >= 60 else UIKit.BAD, 420.0))
 	var car := Career.car_for(id)

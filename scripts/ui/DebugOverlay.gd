@@ -1,6 +1,7 @@
 class_name DebugOverlay
 extends CanvasLayer
-## Developer overlay (F3): raw physics numbers for tuning.
+## Developer overlay (F3): raw physics numbers for tuning. F7 cycles a driver preset on your
+## car (all attributes 70, 85, 95, then off) to compare drivers in the same car.
 
 var manager: Node
 var _label: Label
@@ -20,6 +21,14 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("debug_overlay"):
 		visible = not visible
+	elif event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_F7:
+		var presets := DriverPerformance.PRESETS
+		var at := presets.find(DriverPerformance.dev_preset)
+		DriverPerformance.dev_preset = presets[at + 1] if at + 1 < presets.size() else (0 if at >= 0 else presets[0])
+		var car: VehicleController = manager.get("player") if manager else null
+		if car and DriverPerformance.dev_preset == 0:
+			car.set_driver(GameManager.player_driver())
+		visible = true
 
 
 func _process(delta: float) -> void:
@@ -55,6 +64,10 @@ func _process(delta: float) -> void:
 	text += "tires F %3.0fC %3.0f%%  R %3.0fC %3.0f%%\n" % [p.front_tire.temperature, p.front_tire.wear * 100.0, p.rear_tire.temperature, p.rear_tire.wear * 100.0]
 	text += "brakes %4.0fC  engine %3.0fC\n" % [p.brakes.temperature, p.engine.temperature]
 	text += "surface %s / %s   progress %6.0f m  lat %+5.1f m\n" % [surfaces[car.surface_front], surfaces[car.surface_rear], car.progress, car.lateral]
+	if car.perf:
+		var d := car.perf
+		text += "driver %s  grip %.3f brk %.3f trac %.3f wet %.3f\n" % [("PRESET %d" % DriverPerformance.dev_preset) if DriverPerformance.dev_preset > 0 else "CAREER/DEFAULT", d.lateral, d.braking, d.traction, d.wet_grip]
+		text += "  lock x%.2f spin x%.2f  fatigue %.2f traffic %.2f launch %.2f  wear x%.2f  (F7 preset)\n" % [d.lock_sensitivity, d.spin_sensitivity, d.fatigue, d.traffic, d.launch, d.wear_multiplier]
 	var drivers: Array = manager.get("drivers")
 	if drivers and not drivers.is_empty():
 		text += "AI: "

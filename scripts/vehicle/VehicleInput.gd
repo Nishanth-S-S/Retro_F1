@@ -21,6 +21,11 @@ var touch_steer := 0.0
 var touch_steer_active := false
 var touch_pedal := 0.0               # +1 full throttle, -1 full brake
 var touch_pedal_active := false
+## SPLIT layout: a separate throttle slider and brake button.
+var touch_throttle := 0.0
+var touch_throttle_active := false
+var touch_brake := 0.0
+var touch_brake_active := false
 
 var _key_steer := 0.0
 var _key_throttle := 0.0
@@ -62,6 +67,10 @@ func update_player(delta: float) -> void:
 	if touch_pedal_active:
 		throttle = maxf(throttle, clampf(touch_pedal, 0.0, 1.0))
 		brake = maxf(brake, clampf(-touch_pedal, 0.0, 1.0))
+	if touch_throttle_active:
+		throttle = maxf(throttle, clampf(touch_throttle, 0.0, 1.0))
+	if touch_brake_active:
+		brake = maxf(brake, clampf(touch_brake, 0.0, 1.0))
 	if Input.is_action_just_pressed("shift_up"):
 		shift_up = true
 	if Input.is_action_just_pressed("shift_down"):

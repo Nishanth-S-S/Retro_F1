@@ -10,7 +10,7 @@ const SLOT_SLIDERS := {"front_wing": ["FRONT WING ANGLE"], "rear_wing": ["REAR W
 	"chassis": ["RIDE HEIGHT", "BODY SET"], "tires": ["TYRE PRESSURE"], "front_suspension": ["ANTI-ROLL BALANCE"], "rear_suspension": ["ANTI-ROLL BALANCE"]}
 
 ## The five ratings in the sidebar summary (names from CarRatings).
-const SUMMARY: PackedStringArray = ["TOP SPEED", "ACCELERATION", "CORNERING", "BRAKING", "BALANCE"]
+const SUMMARY: PackedStringArray = ["TOP SPEED", "ACCELERATION", "CORNERING", "BRAKING", "BALANCE", "AERODYNAMICS"]
 
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _stats: CarStats
@@ -306,10 +306,11 @@ func _refresh_car_card() -> void:
 		return
 	for child in _card_list.get_children():
 		child.queue_free()
-	var card := CarRatings.compute(GameManager.setup, _stats)
+	var card := _card(GameManager.setup)
 	_card_overall.text = "OVR %d" % _ovr(GameManager.setup)
 	if Career.active():
-		var tunnel := float(Career.active_car().get("tunnel", 0.0)) * Career.TUNNEL_BONUS
+		_card_list.add_child(UIKit.label("%s %s  ·  POTENTIAL %d" % [str(Career.my_team()["name"]).to_upper(), card["model"], int(card["potential"])], 15, UIKit.HOT))
+		var tunnel := float(card["tunnel"])
 		if tunnel >= 0.5:
 			_card_list.add_child(UIKit.label("+%d OVR FROM WIND TUNNEL KNOWLEDGE" % int(round(tunnel)), 13, UIKit.GOOD))
 	for r: Array in card["ratings"]:
@@ -324,7 +325,8 @@ func _refresh_car_card() -> void:
 			a.draw_rect(Rect2(0, 6, a.size.x, 14), UIKit.GRID_BOLD)
 			a.draw_rect(Rect2(0, 6, a.size.x * value / 99.0, 14), UIKit.GOOD if value >= 75 else (UIKit.LINE if value >= 55 else UIKit.BAD))))
 		row.add_child(UIKit.label("%d" % value, 26))
-		var detail := UIKit.label("%s  ·  %s" % [r[2], r[3]], 12, UIKit.TEXT_DIM)
+		var ceiling := ("  ·  MAX %d" % int(r[4])) if r.size() > 4 else ""
+		var detail := UIKit.label("%s  ·  %s%s" % [r[2], r[3], ceiling], 12, UIKit.TEXT_DIM)
 		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		detail.clip_text = true
 		row.add_child(detail)
@@ -403,7 +405,7 @@ func _refresh_all() -> void:
 	_money_label.text = "%d RP\nRESEARCH" % GameManager.research()
 	var overall := _ovr(setup)
 	_ovr_label.text = "CAR OVR %d" % overall
-	var card := CarRatings.compute(setup, _stats)
+	var card := _card(setup)
 	for r: Array in card["ratings"]:
 		if _rows.has(r[0]):
 			(_rows[r[0]] as RatingRow).set_value(int(r[1]), str(r[2]))
@@ -460,9 +462,15 @@ func _refresh_all() -> void:
 ## The overall shown everywhere in the garage: the career car overall, or the car card's
 ## overall in free play.
 func _ovr(setup: CarSetup) -> int:
+	return int(round(float(_card(setup)["overall"])))
+
+
+## The car card for a build: in a career the team's real car model moved by the build,
+## otherwise the plain physics ratings.
+func _card(setup: CarSetup) -> Dictionary:
 	if Career.active():
-		return int(round(Career.overall_for(setup)))
-	return int(CarRatings.compute(setup, CarStats.compute(setup, _config))["overall"])
+		return Career.car_card(setup)
+	return CarRatings.compute(setup, _stats if setup == GameManager.setup and _stats else CarStats.compute(setup, _config))
 
 
 ## What fitting each listed part would do to the overall.

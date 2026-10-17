@@ -51,7 +51,6 @@ var _base_drivers: Array = []
 var _config: VehiclePhysicsConfig = preload("res://data/physics/default_physics.tres")
 var _rng := RandomNumberGenerator.new()
 var _stats_cache: Dictionary = {}
-var _starter_cache := -1.0
 
 
 func _ready() -> void:
@@ -102,7 +101,42 @@ func active() -> bool:
 	if not c.has("cars"):
 		# ...and careers from before engineers, multiple cars and FIA rules get those.
 		_init_team_extras()
+	if int(c.get("ratings_v", 0)) < RATINGS_VERSION:
+		_apply_real_ratings(c)
 	return true
+
+
+## Careers started before the 2026 cards (driver stats with ceilings, reserves, likenesses
+## and the real car cards) are brought up to date once.
+const RATINGS_VERSION := 2026
+
+
+func _apply_real_ratings(c: Dictionary) -> void:
+	c["ratings_v"] = RATINGS_VERSION
+	var keys := ["pace", "starts", "racecraft", "consistency", "overtaking", "defending", "tyres", "wet", "ego", "ego_cap", "fitness", "caps", "potential", "look"]
+	for base: Dictionary in _base_drivers:
+		var id: String = base["id"]
+		if c["drivers"].has(id):
+			var d: Dictionary = c["drivers"][id]
+			for key: String in keys:
+				if base.has(key):
+					d[key] = base[key].duplicate(true) if base[key] is Dictionary else base[key]
+			if base.get("reserve", false) and str(d["team"]) == str(base["team"]) and str(d["team"]) != str(c["team"]):
+				d["reserve"] = true
+			continue
+		# A driver new to the game (the reserves) joins their team's bench.
+		var copy := base.duplicate(true)
+		copy["junior"] = false
+		c["drivers"][id] = copy
+		c["points"][id] = 0
+		if copy["team"] == c["team"]:
+			if c["reserves"].size() < MAX_RESERVES:
+				copy["reserve"] = false
+				c["reserves"].append(id)
+			else:
+				copy["team"] = ""
+	for t: Dictionary in teams:
+		c["team_cars"][t["id"]] = float(t["car"])
 
 
 func team(id: String) -> Dictionary:
@@ -118,9 +152,19 @@ func my_team() -> Dictionary:
 
 func driver(id: String) -> Dictionary:
 	var d: Dictionary = state()["drivers"].get(id, {})
-	if not d.is_empty() and not d.has("wet"):
+	if not d.is_empty() and not d.has("home"):
 		_ensure_traits(d)
 	return d
+
+
+## True for a team's two starting drivers (yours: the line-up), not reserves or juniors.
+func is_race_driver(id: String) -> bool:
+	var d: Dictionary = state()["drivers"].get(id, {})
+	if d.is_empty() or str(d.get("team", "")) == "":
+		return false
+	if d["team"] == state()["team"]:
+		return lineup().has(id)
+	return not d.get("reserve", false)
 
 
 func lineup() -> Array:
@@ -160,7 +204,7 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 	var drivers := {}
 	for d: Dictionary in _base_drivers:
 		var copy := d.duplicate(true)
-		copy["morale"] = 60
+		copy["morale"] = int(d.get("morale", 60))
 		copy["junior"] = false
 		drivers[d["id"]] = copy
 	var career := {
@@ -179,7 +223,11 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 	for id: String in drivers:
 		career["points"][id] = 0
 		if drivers[id]["team"] == team_id:
-			career["lineup"].append(id)
+			if drivers[id].get("reserve", false):
+				if career["reserves"].size() < MAX_RESERVES:
+					career["reserves"].append(id)
+			else:
+				career["lineup"].append(id)
 	GameManager.profile["career"] = career
 	GameManager.profile["money"] = int(team(team_id)["budget"])
 	GameManager.profile["research_points"] = STARTING_RP
@@ -187,7 +235,8 @@ func new_career(team_id: String, manager: Dictionary) -> void:
 	GameManager.apply_dev(GameManager.setup)
 	_generate_juniors()
 	_generate_people()
-	_add_starting_reserve()
+	if (career["reserves"] as Array).is_empty():
+		_add_starting_reserve()
 	_init_team_extras()
 	manager_contract()
 	_refresh_sponsor_offers()
@@ -239,8 +288,49 @@ func _add_starting_reserve() -> void:
 
 # ---------------------------------------------------------------- ratings
 
+## How much each stat counts in a driver's overall (the weights behind the 2026 driver cards).
+const DRIVER_WEIGHTS := {"pace": 0.30, "starts": 0.08, "racecraft": 0.15, "consistency": 0.18, "overtaking": 0.08,
+	"defending": 0.06, "tyres": 0.08, "wet": 0.05, "fitness": 0.02}
+## Stats that grow with experience, up to each driver's ceiling in `caps`.
+const SKILL_STATS: PackedStringArray = ["pace", "starts", "racecraft", "consistency", "overtaking", "defending", "tyres", "wet"]
+
+
+func _stat(d: Dictionary, key: String) -> float:
+	if key == "fitness":
+		return float(d.get("fitness", 90))
+	# A generated driver without the full card yet: estimate from the core three.
+	return float(d.get(key, d.get("racecraft", d["pace"]) if key in ["overtaking", "defending"] else d.get("consistency", d["pace"]) if key == "tyres" else d["pace"]))
+
+
 func driver_overall(d: Dictionary) -> int:
-	return int(round(float(d["pace"]) * 0.5 + float(d["racecraft"]) * 0.25 + float(d["consistency"]) * 0.25))
+	var total := 0.0
+	for key: String in DRIVER_WEIGHTS:
+		total += _stat(d, key) * float(DRIVER_WEIGHTS[key])
+	return int(round(total))
+
+
+## The attributes the driving model uses (DriverPerformance), from a driver's card.
+func driver_attributes(d: Dictionary) -> Dictionary:
+	var out := {"morale": float(d.get("morale", 70)), "ego": float(d.get("ego", 50))}
+	for key: String in DriverPerformance.KEYS:
+		out[key] = _stat(d, key)
+	return out
+
+
+## The most a stat can reach for this driver (99 when the card has no ceiling for it).
+func stat_cap(d: Dictionary, key: String) -> float:
+	var caps: Dictionary = d.get("caps", {})
+	if caps.has(key):
+		return maxf(float(caps[key]), _stat(d, key))
+	if key == "pace":
+		return maxf(float(d.get("potential", d["pace"])), float(d["pace"]))
+	return 99.0
+
+
+## Raises (or lowers) a skill, never past the driver's ceiling for it.
+func _grow(d: Dictionary, key: String, amount: float) -> void:
+	var now := _stat(d, key)
+	d[key] = clampf(now + amount, 40.0, stat_cap(d, key) if amount > 0.0 else 99.0)
 
 
 ## Derived numbers for a build, cached because the hub asks for them constantly.
@@ -259,17 +349,6 @@ func build_rating(setup: CarSetup = null) -> float:
 	return float(CarRatings.compute(chosen, setup_stats(chosen))["overall_raw"])
 
 
-## The overall of the car every team starts with: the baseline car_overall works from.
-func _starter_rating() -> float:
-	if _starter_cache < 0.0:
-		var starter := CarSetup.new()
-		var parts: Dictionary = GameManager.economy.get("starting_parts", {})
-		for slot: String in parts:
-			starter.install(slot, parts[slot])
-		_starter_cache = build_rating(starter)
-	return _starter_cache
-
-
 ## A team's car rating. For your own team it is the average of the cars your race drivers use.
 func car_rating(team_id: String) -> float:
 	var base: float = state()["team_cars"].get(team_id, 70.0)
@@ -286,7 +365,8 @@ func team_drivers(team_id: String) -> Array:
 		return lineup()
 	var out: Array = []
 	for id: String in state()["drivers"]:
-		if state()["drivers"][id]["team"] == team_id:
+		var d: Dictionary = state()["drivers"][id]
+		if d["team"] == team_id and not d.get("reserve", false):
 			out.append(id)
 	return out
 
@@ -320,8 +400,13 @@ func reserves() -> Array:
 
 ## Overall rating a driver would have at full potential.
 func potential_overall(d: Dictionary) -> int:
+	var caps: Dictionary = d.get("caps", {})
 	var growth := maxf(0.0, float(d["potential"]) - float(d["pace"]))
-	return int(round(float(d["potential"]) * 0.5 + minf(97.0, float(d["racecraft"]) + growth * 0.7) * 0.25 + minf(97.0, float(d["consistency"]) + growth * 0.7) * 0.25))
+	var total := 0.0
+	for key: String in DRIVER_WEIGHTS:
+		var value := float(caps[key]) if caps.has(key) else (float(d["potential"]) if key == "pace" else minf(97.0, _stat(d, key) + growth * 0.7))
+		total += maxf(value, _stat(d, key)) * float(DRIVER_WEIGHTS[key])
+	return int(round(total))
 
 
 func market() -> Array:
@@ -392,6 +477,8 @@ func sign_driver(id: String, replace_id: String) -> String:
 	var d := driver(id)
 	var from_team := str(d.get("team", ""))
 	var poached := from_team != "" and from_team != str(state()["team"])
+	# Taking a rival's reserve leaves their race seats as they were.
+	var took_seat: bool = poached and not d.get("reserve", false)
 	var fee := driver_buyout(d)
 	if poached and int(state()["reputation"]) < poach_reputation(d):
 		return "%s won't leave %s for you yet (needs reputation %d)." % [d["name"], team(from_team)["short"], poach_reputation(d)]
@@ -410,12 +497,13 @@ func sign_driver(id: String, replace_id: String) -> String:
 		add_message("boss_%s" % from_team, "You triggered %s's release clause. %s wired, lawyers satisfied. I won't forget this." % [str(d["name"]).get_slice(" ", 1), money_text(fee)])
 	if replace_id == "reserve":
 		d["team"] = state()["team"]
+		d["reserve"] = false
 		d["junior"] = false
 		d["morale"] = 70
 		reserves().append(id)
 		if not state()["points"].has(id):
 			state()["points"][id] = 0
-		if poached:
+		if took_seat:
 			_backfill_team(from_team)
 		GameManager.save()
 		return ""
@@ -424,6 +512,7 @@ func sign_driver(id: String, replace_id: String) -> String:
 	old["buyout"] = 0
 	old["junior"] = false
 	d["team"] = state()["team"]
+	d["reserve"] = false
 	d["junior"] = false
 	d["morale"] = 75
 	var seats: Array = lineup()
@@ -433,7 +522,7 @@ func sign_driver(id: String, replace_id: String) -> String:
 		state()["number_one"] = ""
 	if not state()["points"].has(id):
 		state()["points"][id] = 0
-	if poached:
+	if took_seat:
 		_backfill_team(from_team)
 	GameManager.save()
 	return ""
@@ -441,6 +530,14 @@ func sign_driver(id: String, replace_id: String) -> String:
 
 ## A rival that lost a driver promotes the best free agent it can find.
 func _backfill_team(team_id: String) -> void:
+	# The team's own reserve steps up first.
+	for id: String in state()["drivers"]:
+		var r: Dictionary = state()["drivers"][id]
+		if r["team"] == team_id and r.get("reserve", false):
+			r["reserve"] = false
+			if not state()["points"].has(id):
+				state()["points"][id] = 0
+			return
 	var best: Dictionary = {}
 	for d: Dictionary in market():
 		if not d.get("junior", false) and (best.is_empty() or driver_overall(d) > driver_overall(best)):
@@ -469,6 +566,8 @@ func promote_reserve(reserve_id: String, seat_id: String) -> String:
 		seats[seats.find(reserve_id)] = seat_id
 		bench[bench.find(seat_id)] = reserve_id
 		return "That swap would break the salary cap."
+	driver(reserve_id)["reserve"] = false
+	driver(seat_id)["reserve"] = true
 	_hand_over_car(seat_id, reserve_id)
 	driver(seat_id)["morale"] = maxi(5, int(driver(seat_id)["morale"]) - 20)
 	driver(reserve_id)["morale"] = mini(100, int(driver(reserve_id)["morale"]) + 15)
@@ -803,7 +902,7 @@ func apply_race(order: Array, flags: Dictionary) -> Dictionary:
 	# --- the world moves on
 	for t: Dictionary in teams:
 		if t["id"] != c["team"]:
-			c["team_cars"][t["id"]] = clampf(float(c["team_cars"][t["id"]]) + _rng.randf_range(-0.25, 0.4), 55.0, 96.0)
+			c["team_cars"][t["id"]] = clampf(float(c["team_cars"][t["id"]]) + _rng.randf_range(-0.25, 0.4), 55.0, _car_ceiling(t["id"]))
 	var results_by_id := {}
 	for car: Dictionary in order:
 		results_by_id[car["id"]] = car
@@ -879,7 +978,7 @@ func _finish_season(report: Dictionary) -> void:
 	for t: Dictionary in teams:
 		c["team_points"][t["id"]] = 0
 		if t["id"] != c["team"]:
-			c["team_cars"][t["id"]] = clampf(float(c["team_cars"][t["id"]]) + _rng.randf_range(-3.0, 3.0), 58.0, 95.0)
+			c["team_cars"][t["id"]] = clampf(float(c["team_cars"][t["id"]]) + _rng.randf_range(-3.0, 3.0), 58.0, _car_ceiling(t["id"]))
 	for id: String in c["drivers"].keys():
 		var d: Dictionary = c["drivers"][id]
 		d["age"] = int(d["age"]) + 1
@@ -1154,7 +1253,9 @@ func person(id: String) -> Dictionary:
 	var d := driver(id)
 	if d.is_empty():
 		return {}
-	return {"id": id, "name": d["name"], "role": "JUNIOR DRIVER" if d.get("junior", false) else "DRIVER", "team": d["team"], "look": PixelArt.random_look(hash(id), 2), "kind": "driver"}
+	# Real drivers have a likeness; generated ones get a look rolled from their id.
+	var look: Dictionary = d.get("look", PixelArt.random_look(hash(id), 2))
+	return {"id": id, "name": d["name"], "role": "JUNIOR DRIVER" if d.get("junior", false) else ("RESERVE DRIVER" if d.get("reserve", false) else "DRIVER"), "team": d["team"], "look": look, "kind": "driver"}
 
 
 func contacts() -> Array:
@@ -1306,7 +1407,9 @@ func _sell_driver(id: String, to_team: String, cash: int) -> String:
 		driver(weakest)["team"] = ""
 		driver(weakest)["buyout"] = 0
 	driver(id)["team"] = to_team
+	driver(id)["reserve"] = false
 	replacement["team"] = state()["team"]
+	replacement["reserve"] = false
 	replacement["junior"] = false
 	var seats: Array = lineup()
 	seats[seats.find(id)] = replacement["id"]
@@ -1321,15 +1424,19 @@ func _sell_driver(id: String, to_team: String, cash: int) -> String:
 
 func _switch_team(team_id: String) -> String:
 	var c := state()
+	# The drivers you leave behind keep their seats at the old team.
+	for id: String in c["lineup"]:
+		c["drivers"][id]["reserve"] = false
 	c["team"] = team_id
 	var seats: Array = []
+	var bench: Array = []
 	for id: String in c["drivers"]:
 		if c["drivers"][id]["team"] == team_id:
-			seats.append(id)
+			(bench if c["drivers"][id].get("reserve", false) else seats).append(id)
 	c["lineup"] = seats.slice(0, 2)
 	for id: String in c["reserves"]:
 		c["drivers"][id]["team"] = ""
-	c["reserves"] = []
+	c["reserves"] = bench.slice(0, MAX_RESERVES)
 	c["number_one"] = ""
 	c["sponsor"] = {}
 	c["factory"] = {"pit": 0}
@@ -1463,12 +1570,15 @@ func build_drive(driver_id: String) -> void:
 		if car["id"] == driver_id:
 			continue
 		var d := driver(car["id"])
-		var delta := (float(car["car"]) - my_strength) * 0.6 + (driver_overall(d) - 80.0) * 0.3 + track_form(d, round_track()) * 6.0
+		# The driver's skill is in the driving model (attrs); pace only carries the car gap
+		# and track form, so a driver is never counted twice.
+		var delta := (float(car["car"]) - my_strength) * 0.6 + track_form(d, round_track()) * 6.0
 		rivals.append({
 			"id": car["id"], "name": car["name"], "color": car["color"], "color2": car.get("color2", "#f4f6f2"), "pace": clampf(0.93 + delta * 0.004, 0.86, 0.985),
 			"braking_accuracy": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97), "consistency": clampf(float(d["consistency"]) / 100.0, 0.7, 0.97),
 			"aggression": clampf(float(d["ego"]) / 100.0, 0.3, 0.9), "tire_management": 0.7, "error_rate": clampf((100.0 - float(d["consistency"])) / 150.0, 0.03, 0.2),
 			"wet": clampf(float(d["wet"]) / 100.0, 0.4, 1.0),
+			"attrs": driver_attributes(d),
 			"setup": {"tires": _rival_tires(sim.weather)},
 		})
 	GameManager.track_id = round_track()
@@ -1544,12 +1654,19 @@ func _ensure_traits(d: Dictionary) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(str(d["id"]) + str(d["name"]))
 	var pace := float(d["pace"])
-	d["wet"] = clampi(int(pace) + rng.randi_range(-13, 7), 40, 99)
-	d["tyres"] = clampi(int(float(d["consistency"])) + rng.randi_range(-8, 8), 40, 99)
-	d["overtaking"] = clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99)
-	d["defending"] = clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99)
-	d["starts"] = clampi(int(pace) + rng.randi_range(-10, 6), 40, 99)
-	var ids := GameManager.TRACKS
+	# Real drivers come with their full card; generated ones get believable numbers.
+	var rolled := {
+		"wet": clampi(int(pace) + rng.randi_range(-13, 7), 40, 99),
+		"tyres": clampi(int(float(d["consistency"])) + rng.randi_range(-8, 8), 40, 99),
+		"overtaking": clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99),
+		"defending": clampi(int(float(d["racecraft"])) + rng.randi_range(-7, 7), 40, 99),
+		"starts": clampi(int(pace) + rng.randi_range(-10, 6), 40, 99),
+	}
+	for key: String in rolled:
+		if not d.has(key):
+			d[key] = rolled[key]
+	# The Apex Lab test track is nobody's home race.
+	var ids := Array(GameManager.TRACKS).filter(func(t: String) -> bool: return t != "apex_lab")
 	d["home"] = ids[rng.randi() % ids.size()]
 	var types: Array = TRACK_TYPES.values()
 	d["strong"] = types[rng.randi() % types.size()]
@@ -1606,7 +1723,7 @@ func _init_team_extras() -> void:
 		_generate_engineers(3, true)
 	c["last_best"] = 0
 	c["tunnel_used"] = 0
-	var first := {"id": "car1", "name": "%s-01" % my_team()["short"], "setup": GameManager.setup.to_dict(), "tunnel": 0.0}
+	var first := {"id": "car1", "name": "%s-01" % car_model(), "setup": GameManager.setup.to_dict(), "tunnel": 0.0}
 	c["cars"] = [first]
 	c["car_count"] = 1
 	c["active_car"] = "car1"
@@ -1831,7 +1948,7 @@ func build_new_car() -> String:
 	charge_cap(NEW_CAR_COST)
 	sync_active_car()
 	c["car_count"] = int(c.get("car_count", cars().size())) + 1
-	var built := {"id": "car%d" % int(c["car_count"]), "name": "%s-%02d" % [my_team()["short"], int(c["car_count"])], "setup": (active_car()["setup"] as Dictionary).duplicate(true), "tunnel": 0.0}
+	var built := {"id": "car%d" % int(c["car_count"]), "name": "%s-%02d" % [car_model(), int(c["car_count"])], "setup": (active_car()["setup"] as Dictionary).duplicate(true), "tunnel": 0.0}
 	cars().append(built)
 	GameManager.save()
 	return ""
@@ -1864,8 +1981,64 @@ func car_overall(c: Dictionary) -> float:
 func overall_for(setup: CarSetup, c: Dictionary = {}) -> float:
 	var car := c if not c.is_empty() else active_car()
 	var base: float = state()["team_cars"].get(state()["team"], 70.0)
-	return clampf(base + (build_rating(setup) - _starter_rating()) * 0.8 + float(state()["car_bonus"])
-		+ float(car.get("tunnel", 0.0)) * TUNNEL_BONUS, 40.0, 99.0)
+	return float(car_card(setup, car)["overall"])
+
+
+## The 2026 card of a team's car model: {"model", "overall", "potential", "ratings": {name: [now, ceiling]}}.
+func team_car_card(team_id: String) -> Dictionary:
+	return team(team_id).get("car_card", {})
+
+
+func car_model(team_id: String = "") -> String:
+	return str(team_car_card(team_id if team_id != "" else str(state()["team"])).get("model", my_team().get("short", "CAR")))
+
+
+## Your car's card. It starts from the team's real model ratings; every part, setup change and
+## upgrade level moves each rating by as much as it moves the physics rating of the starter car,
+## up to the model's ceiling (its potential). Wind-tunnel knowledge adds to the overall.
+func car_card(setup: CarSetup, c: Dictionary = {}) -> Dictionary:
+	var car := c if not c.is_empty() else active_car()
+	var model := team_car_card(str(state()["team"]))
+	var real: Dictionary = model.get("ratings", {})
+	var phys := CarRatings.compute(setup, setup_stats(setup))
+	var starter := _starter_values()
+	var ratings: Array = []
+	var total := 0.0
+	var phys_sum := 0.0
+	for i in phys["ratings"].size():
+		var r: Array = phys["ratings"][i]
+		var name: String = r[0]
+		var weight := float(CarRatings.CATEGORIES[i][1])
+		var pair: Array = real.get(name, [float(starter.get(name, r[1])), 99])
+		var value := clampf(float(pair[0]) + float(r[1]) - float(starter.get(name, r[1])), 30.0, float(pair[1]))
+		ratings.append([name, int(round(value)), r[2], r[3], int(pair[1])])
+		total += value * weight
+		phys_sum += float(r[1]) * weight
+	# Upgrade levels also add to the overall directly (CarRatings.DEV_OVERALL per level).
+	total += maxf(0.0, float(phys["overall_raw"]) - phys_sum)
+	var tunnel := float(car.get("tunnel", 0.0)) * TUNNEL_BONUS
+	total += float(state().get("car_bonus", 0.0)) + tunnel
+	return {"model": str(model.get("model", "")), "ratings": ratings, "overall": clampf(total, 40.0, 99.0),
+		"potential": int(model.get("potential", 99)), "tunnel": tunnel}
+
+
+var _starter_values_cache: Dictionary = {}
+
+
+## Each physics rating of the starter car, the baseline the real card is anchored to.
+func _starter_values() -> Dictionary:
+	if _starter_values_cache.is_empty():
+		var starter := CarSetup.new()
+		var parts: Dictionary = GameManager.economy.get("starting_parts", {})
+		for slot: String in parts:
+			starter.install(slot, parts[slot])
+		for r: Array in CarRatings.compute(starter, setup_stats(starter))["ratings"]:
+			_starter_values_cache[r[0]] = float(r[1])
+	return _starter_values_cache
+
+
+func _car_ceiling(team_id: String) -> float:
+	return float(team_car_card(team_id).get("potential", 96))
 
 
 ## 0-100: how well a car suits a driver's taste in balance and wing level.
@@ -2153,14 +2326,11 @@ func _develop(d: Dictionary, result: Dictionary) -> void:
 	var gain := development_rate(d)
 	if not result.is_empty() and gain > 0.0:
 		gain *= 0.6 if result.get("dnf", false) else (1.35 if int(result.get("position", 22)) <= 10 else 1.0)
-	var room := maxf(0.0, float(d["potential"]) - float(d["pace"]))
-	if gain > 0.0:
-		gain = minf(gain, room)
-	d["pace"] = clampf(float(d["pace"]) + gain, 40.0, 99.0)
+	_grow(d, "pace", gain)
 	for key: String in ["racecraft", "consistency"]:
-		d[key] = clampf(float(d[key]) + gain * 0.8, 40.0, 99.0)
+		_grow(d, key, gain * 0.8)
 	for key: String in ["wet", "tyres", "overtaking", "defending", "starts"]:
-		d[key] = clampf(float(d[key]) + gain * 0.6, 40.0, 99.0)
+		_grow(d, key, gain * 0.6)
 	var mine: bool = lineup().has(d["id"]) or reserves().has(d["id"])
 	if mine:
 		var level := training(d["id"])
@@ -2563,9 +2733,9 @@ func _rate_from_form(d: Dictionary) -> void:
 	var form := _form_average(d)
 	var before := driver_overall(d)
 	var shift := form * 0.12
-	d["pace"] = clampf(float(d["pace"]) + shift, 40.0, 99.0)
-	d["racecraft"] = clampf(float(d["racecraft"]) + shift * 0.7, 40.0, 99.0)
-	d["consistency"] = clampf(float(d["consistency"]) + shift * 0.7, 40.0, 99.0)
+	_grow(d, "pace", shift)
+	_grow(d, "racecraft", shift * 0.7)
+	_grow(d, "consistency", shift * 0.7)
 	if int(d["age"]) <= 26:
 		d["potential"] = clampf(float(d["potential"]) + form * 0.15, float(d["pace"]), 99.0)
 	elif form < 0.0:
@@ -2601,8 +2771,8 @@ func apply_rest(choices: Dictionary) -> void:
 				d["morale"] = mini(100, int(d["morale"]) + 8)
 			"sim":
 				var gain := maxf(0.0, development_rate(d))
-				d["pace"] = minf(float(d["potential"]), float(d["pace"]) + gain)
-				d["racecraft"] = minf(99.0, float(d["racecraft"]) + gain * 0.8)
+				_grow(d, "pace", gain)
+				_grow(d, "racecraft", gain * 0.8)
 			"media":
 				c["reputation"] = mini(100, int(c["reputation"]) + 1)
 				d["morale"] = maxi(5, int(d["morale"]) - 3)

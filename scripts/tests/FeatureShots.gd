@@ -128,8 +128,11 @@ func _ui() -> void:
 	hub.call("_close_modal")
 	hub.call("_open_phone")
 	await _shot("f_phone")
+	var today := int(Career.state()["date"])
+	Career.state()["date"] = Career.race_day(int(Career.state()["round"]))
 	await _goto("res://scenes/career/RaceDay.tscn")
 	await _shot("g_raceday")
+	Career.state()["date"] = today
 	var garage := await _goto("res://scenes/Garage.tscn")
 	await _shot("h_garage")
 	garage.call("_refresh_car_card")

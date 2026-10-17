@@ -55,7 +55,7 @@ func _show_teams() -> void:
 		var names := PackedStringArray()
 		var total := 0.0
 		for d: Dictionary in base:
-			if d["team"] == team["id"]:
+			if d["team"] == team["id"] and not d.get("reserve", false):
 				names.append(str(d["name"]).get_slice(" ", 1))
 				total += float(d["pace"])
 		var card := Button.new()

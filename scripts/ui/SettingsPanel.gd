@@ -39,6 +39,8 @@ func _init() -> void:
 	_slider(left, "Steering Sensitivity", "steering_sensitivity", 0.5, 1.6)
 	_slider(left, "Steering Smoothing", "steering_smoothing", 0.0, 1.0)
 	_slider(left, "Control Opacity", "control_opacity", 0.15, 1.0)
+	# SPLIT: brake button + throttle slider. PEDAL: one pedal, up to accelerate, down to brake.
+	_choice(left, "Pedals", "control_layout", ["SPLIT", "PEDAL"])
 	right.add_child(UIKit.label("ASSISTS", 13, UIKit.TEXT_DIM))
 	_choice(right, "ABS", "abs", ["OFF", "LOW", "HIGH"])
 	_choice(right, "Traction Control", "traction_control", ["OFF", "LOW", "HIGH"])

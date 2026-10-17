@@ -35,6 +35,8 @@ var _line_error_target := 0.0
 var _stuck_timer := 0.0
 var _throttle := 0.0
 var _brake_trim := 1.0
+## The driver's grip reach when the speed profile was planned (fatigue lowers it later).
+var _reach := 1.0
 ## Pit stop: "" (racing), "in" (down the pit lane to the box), "stop" (crew working), "out".
 var pit_state := ""
 var _pit_time := 0.0
@@ -55,16 +57,29 @@ func setup(vehicle: VehicleController, racing_line: RacingLine, profile: Diction
 	tire_management = float(profile.get("tire_management", tire_management))
 	error_rate = float(profile.get("error_rate", error_rate))
 	_rng.seed = seed_value
-	# Pace decides how much of the car's grip the driver dares to use.
-	var grip_scale := lerpf(0.8, 1.0, clampf((pace - 0.8) / 0.2, 0.0, 1.0))
-	# Wet track: less grip for everyone, and less still for drivers who dislike the rain.
-	grip_scale *= float(profile.get("track_grip", 1.0))
-	var brake_scale := lerpf(0.72, 0.98, braking_accuracy)
-	if float(profile.get("track_grip", 1.0)) < 1.0:
+	# The same driver model as the player: the car only gives this driver what their
+	# attributes reach (career rivals bring their real card, free play uses the default).
+	var attrs: Dictionary = profile.get("attrs", {})
+	car.set_driver(attrs)
+	car.perf.wetness = clampf(float(GameManager.session_weather) / 2.0, 0.0, 1.0) if car.wet else 0.0
+	car.perf.update(0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+	_reach = car.perf.lateral * car.perf.wet_grip
+	# Pace decides how much of that grip the AI dares to use.
+	var grip_scale := lerpf(0.8, 1.0, clampf((pace - 0.8) / 0.2, 0.0, 1.0)) * _reach
+	var wet_track := car.wet
+	if attrs.is_empty():
+		# Wet track: less grip for everyone, and less still for drivers who dislike the rain.
+		grip_scale *= float(profile.get("track_grip", 1.0))
+	else:
+		# The wet skill is already in the driver model; everyone leaves a margin in the rain.
+		grip_scale *= car.physics.grip_scale * (0.92 if wet_track else 1.0)
+	var brake_scale := lerpf(0.72, 0.98, braking_accuracy) * car.perf.braking
+	if wet_track or float(profile.get("track_grip", 1.0)) < 1.0:
 		brake_scale *= 0.88          # brake earlier on a wet track
 	_profile = line.speed_profile(car.physics.stats, car.physics_config, grip_scale, brake_scale)
-	# Poor tire managers scrub and overheat their tires.
-	var abuse := lerpf(1.3, 0.85, tire_management)
+	# Poor tire managers scrub and overheat their tires (a real driver's tyre care is in
+	# the driver model instead, so it is not counted twice).
+	var abuse := lerpf(1.3, 0.85, tire_management) if attrs.is_empty() else 1.0
 	car.physics.front_tire.abuse_scale = abuse
 	car.physics.rear_tire.abuse_scale = abuse
 	car.physics.tc_level = 1
@@ -112,6 +127,8 @@ func _physics_process(delta: float) -> void:
 	var rear := car.physics.rear_tire
 	var grip_now := minf(front.grip_coefficient() / front.base_grip, rear.grip_coefficient() / rear.base_grip)
 	target_v *= sqrt(clampf(grip_now, 0.5, 1.0))
+	# A tiring driver has less grip than when the plan was made.
+	target_v *= sqrt(clampf(car.perf.lateral * car.perf.wet_grip / maxf(_reach, 0.01), 0.5, 1.0))
 	# Off the racing surface: be gentle until back on track.
 	if car.surface_rear >= VehiclePhysicsConfig.Surface.GRASS:
 		target_v = minf(target_v, maxf(v, 14.0) + 2.0)
@@ -119,6 +136,7 @@ func _physics_process(delta: float) -> void:
 	if pit_state != "":
 		target_v = _pit_speed(delta)
 	car.physics.aero.drs = drs_allowed and pit_state == "" and input.brake < 0.05
+	_choose_pace()
 	var error := target_v - v
 	var throttle_target := 0.0
 	var brake := 0.0
@@ -229,3 +247,18 @@ func _update_mistakes(idx: int) -> void:
 			2:
 				_line_error_target = (1.0 if _rng.randf() > 0.5 else -1.0) * 2.2
 	_speed_scale = clampf(_speed_scale, 0.9, 1.06)
+
+
+## AI pace control by the same rules as the player: push to attack while there is energy,
+## preserve worn tyres when nobody is close, otherwise balanced.
+func _choose_pace() -> void:
+	var p := car.physics
+	var attacking := overtake.passing or overtake.speed_cap < INF
+	if pit_state != "":
+		p.pace_mode = VehiclePhysics.Pace.BALANCED
+	elif attacking and p.energy > 15.0 and absf(car.input.steer) < 0.2:
+		p.pace_mode = VehiclePhysics.Pace.PUSH
+	elif not attacking and minf(p.front_tire.wear, p.rear_tire.wear) < 0.55:
+		p.pace_mode = VehiclePhysics.Pace.PRESERVE
+	else:
+		p.pace_mode = VehiclePhysics.Pace.BALANCED

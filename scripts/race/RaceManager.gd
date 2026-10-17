@@ -1,6 +1,6 @@
 class_name RaceManager
 extends Node2D
-## Runs one on-track session (test drive, time trial or 5-lap race): builds the grid,
+## Runs one on-track session (test drive, time trial or a short race): builds the grid,
 ## owns timing / positions / telemetry for every car and hands results to the next scene.
 
 enum State { COUNTDOWN, RACING, FINISHED }
@@ -64,6 +64,9 @@ var _stops := 0
 var _dry_compounds := {}
 var _used_wet := false
 var _ai_pit_lap: Array = []
+## BOX tapped: the car steers itself into the pit lane at the next pit entry.
+var box_armed := false
+var _pit_guide: PitGuide
 var _drs_zones: Array = []
 var drs_available := false
 var drs_open := false
@@ -102,6 +105,9 @@ func _ready() -> void:
 	var rain := WeatherFX.new()
 	rain.level = weather
 	add_child(rain)
+	_pit_guide = PitGuide.new()
+	_pit_guide.track = track_node.data
+	add_child(_pit_guide)
 	_gantry = StartGantry.new()
 	_gantry.track = track_node.data
 	add_child(_gantry)
@@ -151,6 +157,7 @@ func _ready() -> void:
 	_plan_ai_stops()
 	_note_compound()
 	_controls.input = player.input
+	_controls.car = player
 	var debug := DebugOverlay.new()
 	debug.manager = self
 	add_child(debug)
@@ -163,9 +170,11 @@ func _ready() -> void:
 	# First race on this save: point out the controls (the countdown waits).
 	CoachMarks.run_once(self, "race", func() -> Array: return [
 		[_controls.steer_rect(), "STEER here with your left thumb: slide left and right."],
-		[_controls.pedal_rect(), "The PEDAL: push up to accelerate, pull down to brake."],
+		[_controls.pedal_rect(), _controls.pedal_hint()],
+		[_controls.pace_rect(), "PACE: PRESERVE is gentle on the tyres, PUSH spends ENERGY for extra power. Braking recharges it."],
 		[_hud._map, "The MAP shows every car. Watch the weather in its corner."],
-		[_hud._status, "FUEL, TYRES and DAMAGE. When they get low, steer into the pit lane after the start line - the stop runs itself."],
+		[_hud._status, "FUEL, TYRE WEAR and DAMAGE. When one runs low, arrows on the track point to the pit lane."],
+		[_hud._box, "Tap BOX and the car drives itself into the pits at the next pit entry. The stop runs itself."],
 		[_hud._drs, "DRS lights up on straights when you're within a second of the car ahead. Tap it to open the wing; braking closes it."],
 		[_hud.marks["cam"], "CAM switches between the driver's view and the overhead view."],
 		[_hud.marks["reset"], "Stuck? RESET puts you back on track for a 3-second penalty."],
@@ -361,6 +370,8 @@ func _start() -> void:
 		car.controls_enabled = true
 		car.start_audio()
 	EventBus.race_state_changed.emit("racing")
+	if _stop_still_required():
+		EventBus.driver_message.emit("MANDATORY STOP  ·  USE 2 DRY COMPOUNDS  ·  BOX BY LAP %d" % GameManager.race_laps, Color("ffb347"))
 
 
 func _update_player(delta: float) -> void:
@@ -389,6 +400,7 @@ func _update_player(delta: float) -> void:
 		player.assist_steer_weight = 0.0
 		player.assist_brake = 0.0
 	_update_pit_stop(delta)
+	_pit_guide.showing = state == State.RACING and pit_phase == "" and (box_armed or pit_reason() != "")
 	if state == State.RACING and not _objective_done and _mission.get("objective", {}).get("type", "") == "max_speed":
 		if player.speed * 3.6 >= float(_mission["objective"]["target"]):
 			_complete_objective()
@@ -448,6 +460,25 @@ func _update_pit_stop(delta: float) -> void:
 		"":
 			if track.in_pit_lane(player.progress, player.lateral) and player.lateral < -(track.half_width + 0.8) and player.progress < track.pit_box - 25.0:
 				_begin_pit()
+			elif box_armed and player_timer.started and (player.progress > track.length - PitGuide.RUN_IN or (player.progress < track.pit_start - 12.0 and player_timer.laps_completed >= 1)):
+				# BOX: hand the wheel to the crew's autopilot for the run into the lane.
+				pit_phase = "entry"
+				player.autopilot = true
+				_controls.release_all()
+				_controls_layer.visible = false
+		"entry":
+			var to_entry := fposmod(track.pit_start - player.progress, track.length)
+			var into := track.pit_start <= player.progress and player.progress < track.pit_end
+			var edge := -(track.half_width - 1.4)
+			_autodrive(lane if into else edge, minf(70.0, sqrt(PIT_SPEED * PIT_SPEED + 2.0 * 9.0 * maxf(0.0, to_entry - 15.0))) if not into else PIT_SPEED)
+			if into and player.lateral < -(track.half_width + 0.8):
+				_begin_pit()
+			elif into and player.progress > track.pit_box - 25.0:
+				# Missed it: give the car back and try again next lap.
+				pit_phase = ""
+				player.autopilot = false
+				_controls_layer.visible = true
+				EventBus.driver_message.emit("MISSED THE PIT ENTRY  -  BOX NEXT LAP", Color("ff5d5d"))
 		"in":
 			var to_box := track.pit_box - player.progress
 			_autodrive(lane, minf(PIT_SPEED, sqrt(maxf(0.0, 2.0 * 7.0 * (to_box - 0.6)))))
@@ -471,7 +502,53 @@ func _update_pit_stop(delta: float) -> void:
 				_hud.show_tyre_choice([], "", false)
 
 
+## Arms or cancels BOX: the car pits itself at the next pit entry.
+func toggle_box() -> void:
+	if state != State.RACING or pit_phase != "":
+		return
+	box_armed = not box_armed
+	EventBus.driver_message.emit("BOX BOX  -  PITTING THIS LAP" if box_armed else "BOX CANCELLED", Color("ffb347") if box_armed else Color.WHITE)
+	AudioManager.play("click", -8.0)
+
+
+## Why the car should stop now ("" = no need): low fuel, heavy damage, worn tyres, or the
+## mandatory stop on its last chance.
+func pit_reason() -> String:
+	if player == null or state != State.RACING:
+		return ""
+	if player.uses_fuel and player.fuel < 25.0:
+		return "LOW FUEL"
+	if player.damage > 50.0:
+		return "HEAVY DAMAGE"
+	if tyre_life() < 0.3:
+		return "TYRES WORN"
+	if _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2:
+		return "MANDATORY STOP"
+	return ""
+
+
+## 1 = new tyres, 0 = worn out (the worse axle).
+func tyre_life() -> float:
+	return minf(player.physics.front_tire.wear, player.physics.rear_tire.wear)
+
+
+## "" outside races; otherwise the two-compound rule's status for the HUD.
+func tyre_rule_text() -> String:
+	if mode != GameManager.MODE_RACE or not GameManager.mandatory_stop:
+		return ""
+	if weather > 0 or _used_wet:
+		return "WET RACE  ·  NO STOP NEEDED"
+	if not _stop_still_required():
+		return "TYRE RULE MET"
+	return "MUST PIT BY LAP %d" % GameManager.race_laps
+
+
+func stop_required() -> bool:
+	return _stop_still_required()
+
+
 func _begin_pit() -> void:
+	box_armed = false
 	pit_phase = "in"
 	player.autopilot = true
 	_controls.release_all()
@@ -527,12 +604,17 @@ func choose_tyre(part_id: String) -> void:
 	_hud.show_tyre_choice(_tyre_options(), _pit_choice, _stop_still_required())
 
 
-## Every compound the tyre supplier brings for you (anything your R&D has unlocked).
+## Keep the choice simple: hard, medium and soft in the dry, intermediates and wets in the
+## rain (whatever the team has), plus the set already on the car.
 func _tyre_options() -> Array:
 	var out: Array = []
-	for part: VehiclePart in PartDB.parts_in("tires"):
-		if GameManager.is_unlocked(part.id):
-			out.append(part.id)
+	var ids := ["tires_hard", "tires_medium", "tires_soft"] if weather == 0 else ["tires_inter", "tires_wet", "tires_medium"]
+	var current: String = player.setup.parts.get("tires", "")
+	if current != "" and not ids.has(current):
+		ids.append(current)
+	for id: String in ids:
+		if GameManager.is_unlocked(id):
+			out.append(id)
 	return out
 
 
@@ -576,13 +658,13 @@ func _autodrive(lateral: float, target_speed: float) -> void:
 	player.input.brake = clampf(-error * 0.35, 0.0, 1.0)
 
 
-## Rivals stop once in a Grand Prix too, on lap 2 or 3, driving through the same pit lane.
+## Rivals stop once in a Grand Prix too, before the last lap, driving through the same pit lane.
 func _plan_ai_stops() -> void:
 	_ai_pit_lap.clear()
 	for i in cars.size():
 		var lap := -1
 		if mode == GameManager.MODE_RACE and GameManager.mandatory_stop and i > 0:
-			lap = randi_range(1, maxi(1, GameManager.race_laps - 2))
+			lap = randi_range(1, maxi(1, GameManager.race_laps - 1))
 		_ai_pit_lap.append(lap)
 
 
@@ -707,7 +789,8 @@ func _driver_feedback(delta: float) -> void:
 	_feedback("ENGINE HOT  ·  POWER REDUCED", p.engine.is_overheating(), 1.0, 12.0, Color("ff5d5d"), delta)
 	_feedback("FUEL LOW  -  BOX THIS LAP", player.uses_fuel and player.fuel < 22.0 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
 	_feedback("HEAVY DAMAGE  -  BOX FOR REPAIRS", player.damage > 60.0 and pit_phase == "", 0.5, 25.0, Color("ff5d5d"), delta)
-	_feedback("PIT STOP STILL REQUIRED", _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2 and pit_phase == "", 0.5, 30.0, Color("ffb347"), delta)
+	_feedback("MANDATORY STOP  -  BOX THIS LAP OR +25 s", _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2 and player.progress > track.length * 0.5 and pit_phase == "", 0.5, 30.0, Color("ffb347"), delta)
+	_feedback("TYRES GONE  -  BOX FOR NEW ONES", tyre_life() < 0.3 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
 
 
 func _feedback(text: String, condition: bool, hold: float, cooldown: float, color: Color, delta: float) -> void:

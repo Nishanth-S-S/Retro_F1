@@ -19,6 +19,30 @@ const STAFF_NOTES := {
 }
 
 
+## A driver's practical effects at the wheel, from DriverPerformance; with `other`, each line
+## also shows the difference to that driver.
+static func driver_effects(parent: Control, d: Dictionary, other: Dictionary = {}, size: int = 13) -> void:
+	var mine := DriverPerformance.effects_for(Career.driver_attributes(d))
+	var theirs: Array = DriverPerformance.effects_for(Career.driver_attributes(other)) if not other.is_empty() else []
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 0)
+	parent.add_child(grid)
+	for i in mine.size():
+		var row: Array = mine[i]
+		grid.add_child(UIKit.label(str(row[0]), size - 1, UIKit.TEXT_DIM))
+		grid.add_child(UIKit.label(str(row[1]), size + 1))
+		var diff := ""
+		var color := UIKit.TEXT_DIM
+		if not theirs.is_empty():
+			var delta := float(row[2]) - float(theirs[i][2])
+			if absf(delta) > 0.02:
+				diff = "BETTER" if delta > 0.0 else "WORSE"
+				color = UIKit.GOOD if delta > 0.0 else UIKit.BAD
+		grid.add_child(UIKit.label(diff, size - 2, color))
+
+
 static func _team_color(team_id: String) -> Color:
 	var t := Career.team(team_id)
 	return Color(str(t["color"])) if not t.is_empty() else Color("6a7078")
@@ -186,7 +210,8 @@ static func driver_card(hub: Control, id: String, note: String = "") -> void:
 	hub._text(mid, "STATS", 14, UIKit.HOT)
 	for stat: Array in CARD_STATS:
 		if level >= int(stat[2]):
-			mid.add_child(Art.rating_bar(stat[0], float(d[stat[1]]), UIKit.WARM if stat[1] == "ego" else UIKit.LINE, 390.0))
+			var cap := (float(d.get("ego_cap", 0)) if stat[1] == "ego" else Career.stat_cap(d, stat[1])) if level >= 3 else 0.0
+			mid.add_child(Art.rating_bar(stat[0], float(d[stat[1]]), UIKit.WARM if stat[1] == "ego" else UIKit.LINE, 390.0, cap))
 		else:
 			hub._text(mid, "%-13s ??" % stat[0], 14, UIKit.TEXT_DIM)
 	if mine:
@@ -203,6 +228,15 @@ static func driver_card(hub: Control, id: String, note: String = "") -> void:
 		hub._text(right, "WANTS %s" % Career.car_taste(d), 15)
 	else:
 		hub._text(right, "UNKNOWN", 18, UIKit.TEXT_DIM)
+	if level >= 2:
+		# What the card means at the wheel (the same numbers the physics uses).
+		var mate := ""
+		for other: String in Career.lineup():
+			if other != id:
+				mate = other
+				break
+		hub._text(right, "ON TRACK%s" % ("  ·  VS %s" % str(Career.driver(mate)["name"]).get_slice(" ", 1).to_upper() if mate != "" and mine else ""), 14, UIKit.HOT)
+		driver_effects(right, d, Career.driver(mate) if mate != "" and mine else {})
 	if racing:
 		hub._text(right, "CAR", 14, UIKit.HOT)
 		for car: Dictionary in Career.cars():

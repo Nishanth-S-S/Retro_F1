@@ -29,6 +29,14 @@ const THEMES := {
 		"buildings": "villa", "building_count": 34, "rocks": 0, "landmark": "ponds", "water": "",
 		"fence": true,
 	},
+	# Skill test track on an old airfield apron: wide open, few distractions, cones and hangars.
+	"apex_lab": {
+		"label": "TEST TRACK", "rain": 0.1,
+		"ground": "8a9c66", "stripe": "93a56d", "patch": "7f915d", "gravel": "d8ccaa",
+		"trees": ["shrub", "round"], "tree_count": 160, "tree_a": "4a6b3a", "tree_b": "62884a",
+		"buildings": "hangar", "building_count": 10, "rocks": 0, "landmark": "airfield", "water": "",
+		"fence": true,
+	},
 	# Old airfield: pale windswept grass, runways, hangars, parked planes, the lake along one side.
 	"silver_lake": {
 		"label": "LAKESIDE AIRFIELD", "rain": 0.3,

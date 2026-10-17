@@ -197,7 +197,8 @@ func _show_profile(id: String) -> void:
 	if not team.is_empty():
 		var t := team
 		side.add_child(Art.make(Vector2(72, 72), func(a: Control) -> void: PixelArt.draw_logo(a, Rect2(Vector2.ZERO, a.size), t)))
-	if p["kind"] == "driver":
+	# The helmet is for a team's two race drivers only, not reserves or juniors.
+	if p["kind"] == "driver" and Career.is_race_driver(id):
 		var d := Career.driver(id)
 		var c1 := _team_color(p["team"])
 		var c2 := Color(str(team.get("color2", "#ffffff")))

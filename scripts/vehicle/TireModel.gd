@@ -21,6 +21,9 @@ var rolling_resistance := 0.012
 var heat_rate := 1.0
 ## Multiplier from an AI driver's tire management (1.0 for the player).
 var abuse_scale := 1.0
+## The driver's tyre care (DriverPerformance.wear_multiplier): wear only, on top of how hard
+## the tyre is actually worked, so careful hands never erase the cost of sliding.
+var driver_wear := 1.0
 
 var temperature := START_TEMP
 var wear := 1.0                   # 1.0 = new, 0.0 = destroyed
@@ -80,5 +83,5 @@ func update(delta: float, speed: float, surface_grip: float = 1.0) -> void:
 	temperature += (heat - COOLING_RATE * (temperature - AMBIENT_TEMP) * (0.6 + 0.4 * speed_factor)) * delta
 	temperature = clampf(temperature, AMBIENT_TEMP, 160.0)
 	var overheat := clampf((temperature - optimal_temperature - temperature_window) / 20.0, 0.0, 2.0)
-	var wear_speed := BASE_WEAR_PER_SECOND * wear_rate * abuse_scale * (work * work * speed_factor + 4.0 * minf(sliding, 1.3) * surface_grip + 1.0 * overheat * speed_factor)
+	var wear_speed := BASE_WEAR_PER_SECOND * wear_rate * abuse_scale * driver_wear * (work * work * speed_factor + 4.0 * minf(sliding, 1.3) * surface_grip + 1.0 * overheat * speed_factor)
 	wear = maxf(0.0, wear - wear_speed * delta)

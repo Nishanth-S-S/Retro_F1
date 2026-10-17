@@ -9,15 +9,18 @@ const MODE_LABELS := {"test": "TEST DRIVE", "time_trial": "TIME TRIAL", "race": 
 const RACE_LAPS := 3
 const SPRINT_LAPS := 2
 ## The first five are real Grand Prix circuits (layouts from the f1-circuits dataset), the rest are fictional.
-const TRACKS: PackedStringArray = ["monza", "silverstone", "spa", "interlagos", "spielberg", "falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven"]
+const TRACKS: PackedStringArray = ["monza", "silverstone", "spa", "interlagos", "spielberg", "falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven", "apex_lab"]
 const TRACK_NAMES := {"monza": "MONZA", "silverstone": "SILVERSTONE", "spa": "SPA", "interlagos": "INTERLAGOS", "spielberg": "RED BULL RING",
-	"falcon_ridge": "FALCON RIDGE", "tempo_park": "TEMPO PARK", "port_azure": "PORT AZURE", "silver_lake": "SILVER LAKE", "nordhaven": "NORDHAVEN"}
+	"falcon_ridge": "FALCON RIDGE", "tempo_park": "TEMPO PARK", "port_azure": "PORT AZURE", "silver_lake": "SILVER LAKE", "nordhaven": "NORDHAVEN",
+	"apex_lab": "APEX LAB"}
 
 const DEFAULT_SETTINGS := {
 	"master_volume": 0.8, "music_volume": 0.5, "effects_volume": 0.8,
 	"steering_sensitivity": 1.0, "steering_smoothing": 0.5,
 	"abs": 1, "traction_control": 1, "automatic": true, "racing_line": true,
 	"camera_rotation": true, "control_opacity": 0.6, "stability_assist": true,
+	# 0 = brake button + throttle slider, 1 = the classic single up/down pedal.
+	"control_layout": 0,
 	# Difficulty: 0-4 = ROOKIE..LEGEND (see Difficulty.gd); the diff_* values belong to the mode. Default PRO.
 	"difficulty": 2, "diff_ai": 0.67, "diff_aggression": 0.55, "diff_steer_assist": 0.0,
 	"diff_brake_assist": 0.0, "diff_grip": 0.0, "diff_damage": 0.5,
@@ -36,6 +39,8 @@ var session_mode := MODE_TEST
 ## Circuit used by the next on-track session.
 var track_id := "falcon_ridge"
 var last_results: Dictionary = {}
+## The player's driving style from the latest session (DrivingStyle.summary()).
+var last_style: Dictionary = {}
 var active_mission := -1
 ## Set while a career grand prix is being driven by the player (see Career.prepare_drive).
 var career_race: Dictionary = {}
@@ -275,6 +280,19 @@ func upgrade_dev(category: String) -> bool:
 func apply_dev(target: CarSetup) -> CarSetup:
 	target.dev = (profile.get("dev_levels", {}) as Dictionary).duplicate()
 	return target
+
+
+## Attributes of whoever drives the player's car this session: the career driver chosen for
+## the race, qualifying or practice, a development preset, or the default driver in free play.
+func player_driver() -> Dictionary:
+	if DriverPerformance.dev_preset > 0:
+		return DriverPerformance.preset(DriverPerformance.dev_preset)
+	var id := str(career_race.get("driver", career_race.get("quali", career_race.get("practice", ""))))
+	if id != "" and Career.active():
+		var d := Career.driver(id)
+		if not d.is_empty():
+			return Career.driver_attributes(d)
+	return {}
 
 
 func install_part(slot: String, part_id: String) -> bool:

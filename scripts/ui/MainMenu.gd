@@ -92,7 +92,7 @@ func _start_tutorial() -> void:
 	CoachMarks.run_once(self, "menu", func() -> Array: return [
 		[null, "Welcome to RETRO F1! Here's a quick tour. Tap anywhere to move on."],
 		[_buttons["CAREER"], "CAREER is the main game: run an F1 team for season after season. Every career is its own save."],
-		[_buttons["FREE DRIVE"], "FREE DRIVE: jump straight in. Test drive, time trial or a 5-lap race on any circuit."],
+		[_buttons["FREE DRIVE"], "FREE DRIVE: jump straight in. Test drive, time trial or a 3-lap race on any circuit."],
 		[_buttons["GARAGE"], "The GARAGE is where you build and tune your car. Every change shows up in its ratings."],
 		[_buttons["DIFFICULTY"], "Pick a DIFFICULTY from ROOKIE (lots of help) to LEGEND (none)."],
 		[_buttons["SETTINGS"], "Sound, steering feel and driving assists live in SETTINGS."],
@@ -157,7 +157,7 @@ func _build_free_drive() -> void:
 		GameManager.track_id = GameManager.TRACKS[(GameManager.TRACKS.find(GameManager.track_id) + 1) % GameManager.TRACKS.size()]
 		show_track.call())
 	box.add_child(track)
-	for info: Array in [["> TEST DRIVE", GameManager.MODE_TEST], ["> TIME TRIAL", GameManager.MODE_TIME_TRIAL], ["> 5 LAP RACE", GameManager.MODE_RACE]]:
+	for info: Array in [["> TEST DRIVE", GameManager.MODE_TEST], ["> TIME TRIAL", GameManager.MODE_TIME_TRIAL], ["> 3 LAP RACE", GameManager.MODE_RACE]]:
 		var b := UIKit.button(info[0], 20)
 		b.custom_minimum_size = Vector2(0, 64)
 		var mode: String = info[1]

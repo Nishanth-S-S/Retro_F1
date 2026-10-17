@@ -4,9 +4,9 @@ extends RefCounted
 ## on a 16x16 grid - no image assets.
 
 const SKIN: PackedStringArray = ["f6d3b3", "e3b08a", "c98d62", "9a6642", "6b4429"]
-const HAIR_COLORS: PackedStringArray = ["2b2118", "6b4423", "c9973f", "b5382a", "d9d9d9", "3a3f5c"]
-const HAIR_STYLES: PackedStringArray = ["SHORT", "SWEPT", "LONG", "BUZZ", "BALD", "CURLY", "MOHAWK"]
-const ACCESSORIES: PackedStringArray = ["NONE", "HEADSET", "GLASSES", "SHADES", "CAP", "BEARD", "MOUSTACHE"]
+const HAIR_COLORS: PackedStringArray = ["2b2118", "6b4423", "c9973f", "b5382a", "d9d9d9", "3a3f5c", "8a6a44", "151515"]
+const HAIR_STYLES: PackedStringArray = ["SHORT", "SWEPT", "LONG", "BUZZ", "BALD", "CURLY", "MOHAWK", "BRAIDS", "MULLET"]
+const ACCESSORIES: PackedStringArray = ["NONE", "HEADSET", "GLASSES", "SHADES", "CAP", "BEARD", "MOUSTACHE", "STUBBLE", "GOATEE"]
 const OUTFITS: PackedStringArray = ["TEAM POLO", "SUIT", "RACE JACKET", "HOODIE"]
 const FACES: PackedStringArray = ["CLASSIC", "SMILE", "SERIOUS", "WIDE EYED", "SLEEPY", "BIG GRIN", "ROUND"]
 const GRID := 16
@@ -21,7 +21,7 @@ static func random_look(seed_value: int, outfit: int = 2) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var extras := [0, 0, 0, 2, 3, 5, 6, 4]
-	return {"skin": rng.randi() % SKIN.size(), "hair": rng.randi() % HAIR_STYLES.size(), "hair_color": rng.randi() % HAIR_COLORS.size(), "accessory": extras[rng.randi() % extras.size()], "outfit": outfit, "face": rng.randi() % FACES.size()}
+	return {"skin": rng.randi() % SKIN.size(), "hair": rng.randi() % 7, "hair_color": rng.randi() % 6, "accessory": extras[rng.randi() % extras.size()], "outfit": outfit, "face": rng.randi() % FACES.size()}
 
 
 static func _px(canvas: CanvasItem, origin: Vector2, cell: float, x: int, y: int, w: int, h: int, color: Color) -> void:
@@ -196,6 +196,23 @@ static func draw_portrait(canvas: CanvasItem, rect: Rect2, look: Dictionary, tea
 			_px(canvas, o, cell, 7, 0, 2, 4, hair)
 			_px(canvas, o, cell, 6, 1, 4, 2, hair)
 			_px(canvas, o, cell, 7, 0, 1, 2, hair_hi)
+		7:      # braids: tight rows on top, tied back and hanging behind the shoulders
+			_px(canvas, o, cell, 4, 1, 8, 3, hair)
+			_px(canvas, o, cell, 3, 3, 1, 3, hair)
+			_px(canvas, o, cell, 12, 3, 1, 3, hair)
+			for bx: int in [5, 7, 9]:
+				_px(canvas, o, cell, bx, 1, 1, 3, hair_hi.darkened(0.1))
+			_px(canvas, o, cell, 12, 6, 2, 6, hair)
+			_px(canvas, o, cell, 13, 12, 1, 2, hair)
+			_hp(canvas, o, cell, 25, 14, 1, 8, hair_hi)
+		8:      # mullet: short on top, long at the back
+			_px(canvas, o, cell, 4, 2, 8, 2, hair)
+			_px(canvas, o, cell, 5, 1, 6, 1, hair)
+			_px(canvas, o, cell, 3, 4, 1, 7, hair)
+			_px(canvas, o, cell, 12, 4, 1, 7, hair)
+			_px(canvas, o, cell, 2, 9, 1, 3, hair)
+			_px(canvas, o, cell, 13, 9, 1, 3, hair)
+			_px(canvas, o, cell, 6, 2, 3, 1, hair_hi)
 	if int(look.get("hair", 0)) % HAIR_STYLES.size() != 4:
 		# Strand highlights break up the flat hair block.
 		for hx: int in [10, 14, 18]:
@@ -237,6 +254,18 @@ static func draw_portrait(canvas: CanvasItem, rect: Rect2, look: Dictionary, tea
 			_px(canvas, o, cell, 5, 8, 6, 1, hair)
 			_px(canvas, o, cell, 5, 9, 1, 1, hair)
 			_px(canvas, o, cell, 10, 9, 1, 1, hair)
+		7:      # stubble: a light shadow along the jaw and upper lip
+			var stubble := Color(hair, 0.35)
+			_px(canvas, o, cell, 4, 8, 1, 2, stubble)
+			_px(canvas, o, cell, 11, 8, 1, 2, stubble)
+			_px(canvas, o, cell, 5, 10, 6, 1, stubble)
+			_hp(canvas, o, cell, 12, 17, 8, 1, stubble)
+		8:      # goatee: moustache joined to a chin beard
+			_px(canvas, o, cell, 6, 8, 4, 1, hair)
+			_px(canvas, o, cell, 6, 9, 1, 1, hair)
+			_px(canvas, o, cell, 9, 9, 1, 1, hair)
+			_px(canvas, o, cell, 6, 10, 4, 1, hair)
+			_px(canvas, o, cell, 7, 11, 2, 1, hair)
 	canvas.draw_rect(Rect2(o, Vector2(cell, cell) * GRID), INK, false, maxf(2.0, cell * 0.35))
 
 

@@ -181,7 +181,7 @@ func _weak_zones() -> Array:
 		["FRONT WING (GRIP)", 3.4, 4.4, 0.55, 0.0, 1.0, sev.call(r["DOWNFORCE"]) * 0.7 + (0.5 if balance < -0.03 else 0.0)],
 		["REAR WING (DRAG)", -1.0, 0.1, 1.5, 0.0, 0.8, sev.call(r["DRAG EFFICIENCY"]) + (0.4 if balance > 0.03 else 0.0)],
 		["WHEELS (DRAG)", -0.5, 3.5, 0.75, 0.6, 1.1, sev.call(r["DRAG EFFICIENCY"]) * 0.8],
-		["FLOOR (DOWNFORCE)", 0.3, 3.2, 0.3, 0.0, 0.7, sev.call(r["DOWNFORCE"]) + (GameManager.setup.ride_height - 5) * 0.06],
+		["FLOOR (DOWNFORCE)", 0.3, 3.2, 0.3, 0.0, 0.7, sev.call(r["DOWNFORCE"]) + sev.call(r["AERODYNAMICS"]) * 0.5 + (GameManager.setup.ride_height - 5) * 0.06],
 		["SIDEPODS (DRAG)", 0.7, 2.3, 0.75, 0.35, 0.75, clampf((float(body["drag"]) - 0.95) * 6.0, 0.0, 1.0)],
 	]
 

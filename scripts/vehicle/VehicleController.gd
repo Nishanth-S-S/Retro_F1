@@ -65,6 +65,13 @@ var assist_brake := 0.0
 var wet := false
 ## The pit-lane autopilot drives (player inputs are ignored while it is on).
 var autopilot := false
+## Who is driving: how much of the car they can use (same rules for player and AI cars).
+var perf: DriverPerformance
+## Metres driven since the start of a race, for fatigue.
+var race_distance := 0.0
+## The player's corner-by-corner driving style (player car only).
+var style: DrivingStyle
+var _was_enabled := false
 
 var _teleport_pending := false
 var _teleport_transform := Transform2D()
@@ -209,7 +216,72 @@ func _physics_process(delta: float) -> void:
 	if track:
 		track_index = track.nearest_index(global_position, track_index)
 		_update_track_state()
+	_update_driver(delta)
 	_update_effects(delta)
+
+
+## Puts a driver in the car. Missing attributes use DriverPerformance.DEFAULT_RATING.
+func set_driver(attrs: Dictionary) -> void:
+	perf = DriverPerformance.new()
+	perf.configure(attrs)
+	physics.driver = perf
+	physics.front_tire.driver_wear = perf.wear_multiplier
+	physics.rear_tire.driver_wear = perf.wear_multiplier
+
+
+func _update_driver(delta: float) -> void:
+	if perf == null:
+		if not is_player:
+			return
+		# The player's car picks up whoever the session says is driving (or a dev preset).
+		set_driver(GameManager.player_driver())
+	elif is_player and DriverPerformance.dev_preset > 0 and int(perf.attributes["pace"]) != DriverPerformance.dev_preset:
+		set_driver(DriverPerformance.preset(DriverPerformance.dev_preset))
+	var racing := GameManager.session_mode == GameManager.MODE_RACE
+	if controls_enabled and not _was_enabled and speed < 1.0 and racing:
+		perf.begin_launch()
+	_was_enabled = controls_enabled
+	if controls_enabled and racing:
+		race_distance += speed * delta
+	var progress_fraction := -1.0
+	if racing and track and track.length > 0.0:
+		progress_fraction = race_distance / (maxf(1.0, float(GameManager.race_laps)) * track.length)
+	perf.wetness = clampf(float(GameManager.session_weather) / 2.0, 0.0, 1.0) if wet else 0.0
+	var usage := maxf(physics.front_tire.usage, physics.rear_tire.usage)
+	var traffic := _traffic()
+	perf.update(delta, progress_fraction, usage, speed, traffic.x, traffic.y, traffic.z)
+	if is_player and track:
+		if style == null:
+			style = DrivingStyle.new(track)
+			GameManager.last_style = {}
+		style.update(self, delta)
+
+
+## Nearest car: x = closeness 0..1 (smooth with distance), y = attacking 0..1, z = defending 0..1.
+func _traffic() -> Vector3:
+	var range_m := float(DriverPerformance.CONFIG["traffic_range"])
+	var close_m := float(DriverPerformance.CONFIG["traffic_close"])
+	var best := Vector3.ZERO
+	var parent := get_parent()
+	if parent == null:
+		return best
+	for node in parent.get_children():
+		if node == self or not node is VehicleController:
+			continue
+		var other := node as VehicleController
+		var rel := (other.global_position - global_position).rotated(-rotation) / PPM
+		var dist := rel.length()
+		if dist > range_m:
+			continue
+		var closeness := 1.0 - smoothstep(close_m, range_m, dist)
+		if closeness <= best.x:
+			continue
+		# Closing speed along our heading: positive when we are catching the car ahead.
+		var closing := (local_velocity.x - other.local_velocity.x) if rel.x > 0.0 else (other.local_velocity.x - local_velocity.x)
+		var side_by_side := 1.0 - smoothstep(2.0, 6.0, absf(rel.x))
+		var engaged := clampf(maxf(closing / 3.0, side_by_side), 0.0, 1.0)
+		best = Vector3(closeness, engaged if rel.x > 0.0 else 0.0, engaged if rel.x <= 0.0 else 0.0)
+	return best
 
 
 func _update_track_state() -> void:

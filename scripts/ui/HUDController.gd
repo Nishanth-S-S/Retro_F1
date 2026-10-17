@@ -1,7 +1,8 @@
 class_name HUDController
 extends CanvasLayer
 ## In-race HUD, kept deliberately sparse: position and lap, a live leaderboard, lap time
-## and delta, three status bars (fuel, tires, damage), and gear / speed.
+## and delta, status bars (fuel, tyre wear, damage) with the tyre rule, a BOX button, pit
+## arrows when the car needs a stop, and gear / speed.
 
 const MESSAGE_TIME := 1.6
 const WHITE := Color.WHITE
@@ -36,6 +37,10 @@ var _driver_view := false
 var _tyres: HFlowContainer
 var _tyre_note: Label
 var _drs: Button
+var _box: Button
+var _pit_alert: Label
+var _pit_arrow: Art
+var _pulse := 0.0
 ## Controls the race tutorial points at.
 var marks: Dictionary = {}
 var _map_points := PackedVector2Array()
@@ -55,6 +60,7 @@ func _ready() -> void:
 	_build_bottom()
 	_build_overlays()
 	_build_pause()
+	_root.add_child(FatigueMeter.make(self))
 	EventBus.driver_message.connect(show_message)
 	EventBus.settings_changed.connect(_refresh_settings)
 
@@ -146,10 +152,10 @@ func _build_top_right() -> void:
 	pause.custom_minimum_size = Vector2(52, 46)
 	pause.pressed.connect(func() -> void: manager.toggle_pause())
 	box.add_child(pause)
-	_status = Art.make(Vector2(176, 74), _paint_status)
+	_status = Art.make(Vector2(176, 104), _paint_status)
 	_status.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_status.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_status.size = Vector2(176, 74)
+	_status.size = Vector2(176, 104)
 	_status.position = Vector2(-190, 66)
 	_root.add_child(_status)
 
@@ -198,10 +204,21 @@ func _build_bottom() -> void:
 	_drs.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_drs.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_drs.size = Vector2(176, 66)
-	_drs.position = Vector2(-190, 292)
+	_drs.position = Vector2(-190, 322)
 	_drs.pressed.connect(func() -> void: manager.open_drs())
 	_drs.visible = GameManager.session_mode == GameManager.MODE_RACE
 	_root.add_child(_drs)
+	# BOX: tap once and the car pits itself at the next pit entry.
+	_box = UIKit.button("BOX", 20)
+	_box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_box.size = Vector2(176, 58)
+	_box.position = Vector2(-190, 396)
+	_box.pressed.connect(func() -> void: manager.toggle_box())
+	_box.visible = GameManager.session_mode != GameManager.MODE_TIME_TRIAL
+	_root.add_child(_box)
+	marks["box"] = _box
+
 	# Manual shift buttons, reachable by the right thumb beside the pedal.
 	_shift_box = VBoxContainer.new()
 	_shift_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -238,6 +255,17 @@ func _build_overlays() -> void:
 	_pit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_pit_label.visible = false
 	_root.add_child(_pit_label)
+	# "BOX THIS LAP" banner and an arrow pointing at the pit entry when a stop is needed.
+	_pit_alert = _shadowed("", 22, AMBER)
+	_pit_alert.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_pit_alert.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_pit_alert.position.y = 128
+	_pit_alert.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_root.add_child(_pit_alert)
+	_pit_arrow = Art.make(Vector2.ZERO, _paint_pit_arrow)
+	_pit_arrow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pit_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_pit_arrow)
 	_countdown_box = HBoxContainer.new()
 	_countdown_box.set_anchors_preset(Control.PRESET_CENTER)
 	_countdown_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -362,6 +390,20 @@ func _process(delta: float) -> void:
 	_drs.visible = manager.mode == GameManager.MODE_RACE and manager.pit_phase == ""
 	_drs.disabled = not manager.drs_available
 	_drs.text = "DRS OPEN" if manager.drs_open else "DRS"
+	_pulse += delta
+	var reason := manager.pit_reason()
+	var need := manager.state == RaceManager.State.RACING and manager.pit_phase == "" and (reason != "" or manager.box_armed)
+	_box.visible = GameManager.session_mode != GameManager.MODE_TIME_TRIAL and manager.pit_phase == "" and manager.state == RaceManager.State.RACING
+	_box.text = "BOX ARMED\nTAP TO CANCEL" if manager.box_armed else ("BOX  ·  %s" % reason if reason != "" else "BOX")
+	_box.add_theme_font_size_override("font_size", 14 if manager.box_armed or reason != "" else 20)
+	_box.modulate = Color.WHITE.lerp(AMBER, 0.5 + 0.5 * sin(_pulse * 8.0)) if reason != "" and not manager.box_armed else Color.WHITE
+	_pit_alert.visible = need
+	if need:
+		_pit_alert.text = ("BOX BOX  ·  PITTING NEXT ENTRY" if manager.box_armed else "BOX THIS LAP  ·  %s" % reason) + "  ·  %d m" % int(_to_pit_entry())
+		_pit_alert.modulate.a = 0.65 + 0.35 * sin(_pulse * 6.0)
+	_pit_arrow.visible = need
+	if need:
+		_pit_arrow.queue_redraw()
 	_slow_timer -= delta
 	if _slow_timer > 0.0:
 		return
@@ -418,16 +460,62 @@ func _paint_status(a: Control) -> void:
 	var p := car.physics
 	if p.stats == null:
 		return
+	var f := UIKit.font()
 	var y := 0.0
 	if car.uses_fuel:
 		_bar(a, y, "FUEL", car.fuel / 100.0, GREEN if car.fuel > 25.0 else RED)
 		y += 24.0
-	var tires := minf(p.front_tire.wear, p.rear_tire.wear)
+	# Tyre degradation: compound colour chip, life left, and the bar fading green -> red.
+	var life := manager.tyre_life()
 	var hot := p.front_tire.is_overheating() or p.rear_tire.is_overheating()
-	_bar(a, y, "TIRES", tires, RED if hot or tires < 0.5 else GREEN)
+	var wear_col := RED.lerp(AMBER, clampf(life / 0.5, 0.0, 1.0)).lerp(GREEN, clampf((life - 0.5) / 0.3, 0.0, 1.0))
+	_bar(a, y, "TYRES", life, RED if hot and fmod(_pulse, 0.5) < 0.25 else wear_col)
+	var compound: Color = CarVisual.COMPOUND_COLORS.get(car.setup.parts.get("tires", ""), Color.WHITE)
+	a.draw_circle(Vector2(50, y + 7.0), 5.0, compound)
+	a.draw_string_outline(f, Vector2(0, y + 12.0), "%d%%" % int(round(life * 100.0)), HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, 4, Color(0, 0, 0, 0.8))
+	a.draw_string(f, Vector2(0, y + 12.0), "%d%%" % int(round(life * 100.0)), HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, WHITE)
 	y += 24.0
 	var hurt := car.damage / 100.0
 	_bar(a, y, "DAMAGE", hurt, GREEN.lerp(AMBER, clampf(hurt * 2.0, 0.0, 1.0)).lerp(RED, clampf(hurt * 2.0 - 1.0, 0.0, 1.0)))
+	y += 24.0
+	# The two-compound rule: what is still owed.
+	var rule := manager.tyre_rule_text()
+	if rule != "":
+		var col := AMBER if manager.stop_required() else GREEN
+		a.draw_string_outline(f, Vector2(0, y + 11.0), rule, HORIZONTAL_ALIGNMENT_LEFT, a.size.x, 10, 4, Color(0, 0, 0, 0.8))
+		a.draw_string(f, Vector2(0, y + 11.0), rule, HORIZONTAL_ALIGNMENT_LEFT, a.size.x, 10, col)
+
+
+## Metres to the pit entry along the track.
+func _to_pit_entry() -> float:
+	var t := manager.track
+	return fposmod(t.pit_start - manager.player.progress, t.length)
+
+
+## A big arrow at the edge of a ring around the car, pointing at the pit entry.
+func _paint_pit_arrow(a: Control) -> void:
+	if manager == null or manager.player == null:
+		return
+	var t := manager.track
+	var canvas := a.get_viewport().get_canvas_transform()
+	var car_screen := canvas * manager.player.global_position
+	var target := canvas * t.position_at(t.pit_start + 10.0, -(t.half_width + TrackData.PIT_WIDTH * 0.55))
+	var dir := (target - car_screen).normalized()
+	if dir == Vector2.ZERO:
+		return
+	var at := car_screen + dir * 120.0
+	if car_screen.distance_to(target) < 140.0:
+		at = target - dir * 30.0
+	var col := AMBER.lerp(Color.WHITE, 0.25 + 0.25 * sin(_pulse * 8.0))
+	var side := dir.orthogonal()
+	var pts := PackedVector2Array([at + dir * 30.0, at + side * 20.0, at + side * 8.0 - dir * 4.0, at + side * 8.0 - dir * 26.0, at - side * 8.0 - dir * 26.0, at - side * 8.0 - dir * 4.0, at - side * 20.0])
+	var outline := pts.duplicate()
+	outline.append(pts[0])
+	a.draw_colored_polygon(pts, col)
+	a.draw_polyline(outline, Color(0, 0, 0, 0.8), 3.0)
+	var f := UIKit.font()
+	a.draw_string_outline(f, at - dir * 44.0 + Vector2(-30, 6), "PIT", HORIZONTAL_ALIGNMENT_CENTER, 60, 16, 5, Color(0, 0, 0, 0.85))
+	a.draw_string(f, at - dir * 44.0 + Vector2(-30, 6), "PIT", HORIZONTAL_ALIGNMENT_CENTER, 60, 16, AMBER)
 
 
 # ---------------------------------------------------------------- track map
@@ -452,7 +540,7 @@ func _build_map() -> void:
 	_map.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_map.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_map.size = MAP_SIZE
-	_map.position = Vector2(-190, 148)
+	_map.position = Vector2(-190, 178)
 	_root.add_child(_map)
 
 
@@ -509,7 +597,6 @@ func show_tyre_choice(options: Array, chosen: String, required: bool) -> void:
 		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(band)
 		_tyres.add_child(b)
-
 
 
 func set_driver_view(on: bool) -> void:

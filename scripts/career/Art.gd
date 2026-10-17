@@ -19,13 +19,16 @@ func _draw() -> void:
 
 
 ## Horizontal 0-100 bar with a label and value, used for ratings everywhere.
-static func rating_bar(title: String, value: float, color: Color = UIKit.LINE, width: float = 220.0) -> Art:
+## `cap` > 0 shows the driver's ceiling for the stat as a faded extension of the bar.
+static func rating_bar(title: String, value: float, color: Color = UIKit.LINE, width: float = 220.0, cap: float = 0.0) -> Art:
 	return make(Vector2(width, 22), func(c: Control) -> void:
 		var f := UIKit.font()
 		c.draw_string(f, Vector2(0, 14), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UIKit.TEXT_DIM)
 		var x := 92.0
 		var w := c.size.x - x - 34.0
 		c.draw_rect(Rect2(x, 5, w, 11), UIKit.GRID_BOLD)
+		if cap > value:
+			c.draw_rect(Rect2(x, 5, w * clampf(cap / 100.0, 0.0, 1.0), 11), Color(color, 0.25))
 		c.draw_rect(Rect2(x, 5, w * clampf(value / 100.0, 0.0, 1.0), 11), color)
 		c.draw_string(f, Vector2(0, 15), "%d" % int(round(value)), HORIZONTAL_ALIGNMENT_RIGHT, c.size.x, 13, UIKit.TEXT))
 

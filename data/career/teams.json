@@ -6,10 +6,61 @@
   "color": "#ff8000",
   "color2": "#1f2a3a",
   "logo": "ring",
-  "car": 87,
+  "car": 94,
   "budget": 60000,
   "expectation": 3,
-  "owner": "an investment consortium"
+  "owner": "an investment consortium",
+  "car_card": {
+   "model": "MCL40",
+   "overall": 94,
+   "potential": 99,
+   "ratings": {
+    "POWER": [
+     97,
+     99
+    ],
+    "ACCELERATION": [
+     93,
+     98
+    ],
+    "TOP SPEED": [
+     93,
+     98
+    ],
+    "DOWNFORCE": [
+     94,
+     99
+    ],
+    "DRAG EFFICIENCY": [
+     92,
+     98
+    ],
+    "CORNERING": [
+     95,
+     99
+    ],
+    "BRAKING": [
+     93,
+     98
+    ],
+    "BALANCE": [
+     93,
+     99
+    ],
+    "WEIGHT": [
+     91,
+     97
+    ],
+    "TYRE LIFE": [
+     96,
+     99
+    ],
+    "AERODYNAMICS": [
+     94,
+     99
+    ]
+   }
+  }
  },
  {
   "id": "fer",
@@ -18,10 +69,61 @@
   "color": "#dc1a1a",
   "color2": "#ffd400",
   "logo": "shield",
-  "car": 89,
+  "car": 94,
   "budget": 58000,
   "expectation": 2,
-  "owner": "a historic family board"
+  "owner": "a historic family board",
+  "car_card": {
+   "model": "SF-26",
+   "overall": 94,
+   "potential": 98,
+   "ratings": {
+    "POWER": [
+     95,
+     98
+    ],
+    "ACCELERATION": [
+     96,
+     99
+    ],
+    "TOP SPEED": [
+     94,
+     98
+    ],
+    "DOWNFORCE": [
+     93,
+     98
+    ],
+    "DRAG EFFICIENCY": [
+     92,
+     97
+    ],
+    "CORNERING": [
+     94,
+     99
+    ],
+    "BRAKING": [
+     96,
+     99
+    ],
+    "BALANCE": [
+     92,
+     98
+    ],
+    "WEIGHT": [
+     92,
+     97
+    ],
+    "TYRE LIFE": [
+     91,
+     97
+    ],
+    "AERODYNAMICS": [
+     93,
+     98
+    ]
+   }
+  }
  },
  {
   "id": "rbr",
@@ -30,10 +132,61 @@
   "color": "#1e2a5a",
   "color2": "#e0352b",
   "logo": "charge",
-  "car": 86,
+  "car": 93,
   "budget": 57000,
   "expectation": 3,
-  "owner": "a drinks conglomerate"
+  "owner": "a drinks conglomerate",
+  "car_card": {
+   "model": "RB22",
+   "overall": 93,
+   "potential": 98,
+   "ratings": {
+    "POWER": [
+     95,
+     99
+    ],
+    "ACCELERATION": [
+     93,
+     98
+    ],
+    "TOP SPEED": [
+     96,
+     99
+    ],
+    "DOWNFORCE": [
+     92,
+     98
+    ],
+    "DRAG EFFICIENCY": [
+     96,
+     99
+    ],
+    "CORNERING": [
+     93,
+     99
+    ],
+    "BRAKING": [
+     92,
+     98
+    ],
+    "BALANCE": [
+     88,
+     97
+    ],
+    "WEIGHT": [
+     93,
+     98
+    ],
+    "TYRE LIFE": [
+     90,
+     97
+    ],
+    "AERODYNAMICS": [
+     94,
+     99
+    ]
+   }
+  }
  },
  {
   "id": "mer",
@@ -42,10 +195,61 @@
   "color": "#00bfae",
   "color2": "#1f2a3a",
   "logo": "star",
-  "car": 93,
+  "car": 96,
   "budget": 58000,
   "expectation": 1,
-  "owner": "an automotive board"
+  "owner": "an automotive board",
+  "car_card": {
+   "model": "W17",
+   "overall": 96,
+   "potential": 99,
+   "ratings": {
+    "POWER": [
+     97,
+     99
+    ],
+    "ACCELERATION": [
+     96,
+     99
+    ],
+    "TOP SPEED": [
+     95,
+     98
+    ],
+    "DOWNFORCE": [
+     95,
+     98
+    ],
+    "DRAG EFFICIENCY": [
+     96,
+     99
+    ],
+    "CORNERING": [
+     96,
+     99
+    ],
+    "BRAKING": [
+     95,
+     98
+    ],
+    "BALANCE": [
+     96,
+     99
+    ],
+    "WEIGHT": [
+     94,
+     98
+    ],
+    "TYRE LIFE": [
+     94,
+     98
+    ],
+    "AERODYNAMICS": [
+     96,
+     99
+    ]
+   }
+  }
  },
  {
   "id": "amr",
@@ -54,10 +258,61 @@
   "color": "#006f62",
   "color2": "#c8d400",
   "logo": "wings",
-  "car": 74,
+  "car": 76,
   "budget": 50000,
   "expectation": 9,
-  "owner": "an impatient billionaire owner"
+  "owner": "an impatient billionaire owner",
+  "car_card": {
+   "model": "AMR26",
+   "overall": 76,
+   "potential": 95,
+   "ratings": {
+    "POWER": [
+     72,
+     94
+    ],
+    "ACCELERATION": [
+     72,
+     92
+    ],
+    "TOP SPEED": [
+     76,
+     94
+    ],
+    "DOWNFORCE": [
+     79,
+     96
+    ],
+    "DRAG EFFICIENCY": [
+     76,
+     94
+    ],
+    "CORNERING": [
+     78,
+     96
+    ],
+    "BRAKING": [
+     79,
+     94
+    ],
+    "BALANCE": [
+     73,
+     95
+    ],
+    "WEIGHT": [
+     74,
+     93
+    ],
+    "TYRE LIFE": [
+     77,
+     95
+    ],
+    "AERODYNAMICS": [
+     78,
+     96
+    ]
+   }
+  }
  },
  {
   "id": "alp",
@@ -66,10 +321,61 @@
   "color": "#1c8cff",
   "color2": "#ff6fb5",
   "logo": "chevron",
-  "car": 74,
+  "car": 85,
   "budget": 38000,
   "expectation": 8,
-  "owner": "an automotive board"
+  "owner": "an automotive board",
+  "car_card": {
+   "model": "A526",
+   "overall": 85,
+   "potential": 94,
+   "ratings": {
+    "POWER": [
+     97,
+     99
+    ],
+    "ACCELERATION": [
+     86,
+     94
+    ],
+    "TOP SPEED": [
+     92,
+     97
+    ],
+    "DOWNFORCE": [
+     80,
+     92
+    ],
+    "DRAG EFFICIENCY": [
+     88,
+     96
+    ],
+    "CORNERING": [
+     81,
+     93
+    ],
+    "BRAKING": [
+     83,
+     93
+    ],
+    "BALANCE": [
+     80,
+     93
+    ],
+    "WEIGHT": [
+     82,
+     94
+    ],
+    "TYRE LIFE": [
+     81,
+     93
+    ],
+    "AERODYNAMICS": [
+     82,
+     94
+    ]
+   }
+  }
  },
  {
   "id": "wil",
@@ -78,10 +384,61 @@
   "color": "#0a4bd6",
   "color2": "#ffffff",
   "logo": "stripes",
-  "car": 76,
+  "car": 80,
   "budget": 40000,
   "expectation": 7,
-  "owner": "a private equity fund"
+  "owner": "a private equity fund",
+  "car_card": {
+   "model": "FW48",
+   "overall": 80,
+   "potential": 93,
+   "ratings": {
+    "POWER": [
+     97,
+     99
+    ],
+    "ACCELERATION": [
+     82,
+     93
+    ],
+    "TOP SPEED": [
+     94,
+     98
+    ],
+    "DOWNFORCE": [
+     73,
+     90
+    ],
+    "DRAG EFFICIENCY": [
+     88,
+     96
+    ],
+    "CORNERING": [
+     74,
+     92
+    ],
+    "BRAKING": [
+     79,
+     92
+    ],
+    "BALANCE": [
+     73,
+     91
+    ],
+    "WEIGHT": [
+     70,
+     92
+    ],
+    "TYRE LIFE": [
+     77,
+     92
+    ],
+    "AERODYNAMICS": [
+     75,
+     93
+    ]
+   }
+  }
  },
  {
   "id": "rcb",
@@ -90,10 +447,61 @@
   "color": "#6c8cff",
   "color2": "#ffffff",
   "logo": "charge",
-  "car": 79,
+  "car": 87,
   "budget": 36000,
   "expectation": 6,
-  "owner": "a drinks conglomerate"
+  "owner": "a drinks conglomerate",
+  "car_card": {
+   "model": "VCARB 03",
+   "overall": 87,
+   "potential": 95,
+   "ratings": {
+    "POWER": [
+     95,
+     98
+    ],
+    "ACCELERATION": [
+     87,
+     94
+    ],
+    "TOP SPEED": [
+     91,
+     97
+    ],
+    "DOWNFORCE": [
+     84,
+     93
+    ],
+    "DRAG EFFICIENCY": [
+     89,
+     96
+    ],
+    "CORNERING": [
+     85,
+     94
+    ],
+    "BRAKING": [
+     85,
+     94
+    ],
+    "BALANCE": [
+     84,
+     94
+    ],
+    "WEIGHT": [
+     87,
+     95
+    ],
+    "TYRE LIFE": [
+     83,
+     93
+    ],
+    "AERODYNAMICS": [
+     85,
+     94
+    ]
+   }
+  }
  },
  {
   "id": "has",
@@ -102,10 +510,61 @@
   "color": "#9aa0a6",
   "color2": "#e0352b",
   "logo": "diamond",
-  "car": 75,
+  "car": 83,
   "budget": 32000,
   "expectation": 8,
-  "owner": "a machine-tool tycoon"
+  "owner": "a machine-tool tycoon",
+  "car_card": {
+   "model": "VF-26",
+   "overall": 83,
+   "potential": 92,
+   "ratings": {
+    "POWER": [
+     95,
+     98
+    ],
+    "ACCELERATION": [
+     84,
+     92
+    ],
+    "TOP SPEED": [
+     90,
+     96
+    ],
+    "DOWNFORCE": [
+     78,
+     89
+    ],
+    "DRAG EFFICIENCY": [
+     86,
+     94
+    ],
+    "CORNERING": [
+     79,
+     90
+    ],
+    "BRAKING": [
+     82,
+     92
+    ],
+    "BALANCE": [
+     78,
+     90
+    ],
+    "WEIGHT": [
+     81,
+     92
+    ],
+    "TYRE LIFE": [
+     76,
+     89
+    ],
+    "AERODYNAMICS": [
+     79,
+     91
+    ]
+   }
+  }
  },
  {
   "id": "aud",
@@ -114,10 +573,61 @@
   "color": "#b9002c",
   "color2": "#c9ccd1",
   "logo": "rings",
-  "car": 76,
+  "car": 80,
   "budget": 42000,
   "expectation": 7,
-  "owner": "an automotive board"
+  "owner": "an automotive board",
+  "car_card": {
+   "model": "R26",
+   "overall": 80,
+   "potential": 94,
+   "ratings": {
+    "POWER": [
+     82,
+     95
+    ],
+    "ACCELERATION": [
+     80,
+     93
+    ],
+    "TOP SPEED": [
+     84,
+     95
+    ],
+    "DOWNFORCE": [
+     80,
+     94
+    ],
+    "DRAG EFFICIENCY": [
+     82,
+     95
+    ],
+    "CORNERING": [
+     80,
+     94
+    ],
+    "BRAKING": [
+     81,
+     94
+    ],
+    "BALANCE": [
+     77,
+     93
+    ],
+    "WEIGHT": [
+     79,
+     93
+    ],
+    "TYRE LIFE": [
+     79,
+     94
+    ],
+    "AERODYNAMICS": [
+     80,
+     95
+    ]
+   }
+  }
  },
  {
   "id": "cad",
@@ -126,9 +636,60 @@
   "color": "#151515",
   "color2": "#c9a227",
   "logo": "crest",
-  "car": 68,
+  "car": 75,
   "budget": 45000,
   "expectation": 10,
-  "owner": "a corporate parent"
+  "owner": "a corporate parent",
+  "car_card": {
+   "model": "MAC-26",
+   "overall": 75,
+   "potential": 90,
+   "ratings": {
+    "POWER": [
+     95,
+     98
+    ],
+    "ACCELERATION": [
+     77,
+     90
+    ],
+    "TOP SPEED": [
+     86,
+     95
+    ],
+    "DOWNFORCE": [
+     68,
+     87
+    ],
+    "DRAG EFFICIENCY": [
+     78,
+     91
+    ],
+    "CORNERING": [
+     69,
+     88
+    ],
+    "BRAKING": [
+     74,
+     89
+    ],
+    "BALANCE": [
+     68,
+     88
+    ],
+    "WEIGHT": [
+     65,
+     89
+    ],
+    "TYRE LIFE": [
+     72,
+     89
+    ],
+    "AERODYNAMICS": [
+     69,
+     90
+    ]
+   }
+  }
  }
 ]

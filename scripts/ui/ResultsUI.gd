@@ -65,6 +65,7 @@ func _ready() -> void:
 			var row := UIKit.label("%d  %s" % [i + 1, str(entry["name"]).to_upper()], 18, UIKit.WARM if entry["is_player"] else UIKit.TEXT)
 			row.custom_minimum_size = Vector2(340, 0)
 			grid.add_child(row)
+	_add_style(box)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 10)
 	box.add_child(buttons)
@@ -76,6 +77,41 @@ func _ready() -> void:
 		buttons.add_child(b)
 	if cash > 0:
 		AudioManager.play("cash", -6.0)
+
+
+## How you drove: the five styles DrivingStyle read from your corners and battles.
+func _add_style(box: VBoxContainer) -> void:
+	var style := GameManager.last_style
+	if style.is_empty() or int(style.get("corners", 0)) < 3:
+		return
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	box.add_child(head)
+	head.add_child(UIKit.label("YOUR STYLE:", 18, UIKit.TEXT_DIM))
+	head.add_child(UIKit.label(str(style["top"]), 22, UIKit.HOT))
+	var blurb := UIKit.label(str(style["blurb"]), 14, UIKit.TEXT_DIM)
+	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(blurb)
+	var scores: Dictionary = style["scores"]
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 24)
+	box.add_child(grid)
+	for key: String in DrivingStyle.STYLES:
+		var value := float(scores.get(key, 0.0))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		grid.add_child(row)
+		var name := UIKit.label(key, 13, UIKit.TEXT if key == style["top"] else UIKit.TEXT_DIM)
+		name.custom_minimum_size = Vector2(150, 0)
+		row.add_child(name)
+		var color := UIKit.WARM if key == style["top"] else UIKit.LINE
+		row.add_child(Art.make(Vector2(150, 20), func(a: Control) -> void:
+			a.draw_rect(Rect2(0, 5, a.size.x, 10), UIKit.GRID_BOLD)
+			a.draw_rect(Rect2(0, 5, a.size.x * value / 100.0, 10), color)))
+		row.add_child(UIKit.label("%d" % int(round(value)), 14))
+	var passes := "PASSES ON THE BRAKES %d  ·  ON THE EXIT %d  ·  PLACES LOST %d" % [int(style["passes_braking"]), int(style["passes_exit"]), int(style["lost"])]
+	box.add_child(UIKit.label(passes, 13, UIKit.TEXT_DIM))
 
 
 func _draw() -> void:

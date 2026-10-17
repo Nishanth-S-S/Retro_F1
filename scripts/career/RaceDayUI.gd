@@ -63,12 +63,14 @@ func _ready() -> void:
 			q.disabled = done or not ready
 			q.pressed.connect(func() -> void: Career.prepare_quali(id))
 			col.add_child(q)
+			_effects(col, id)
 			continue
 		var b := UIKit.button("DRIVE\n%s\nSTARTS P%d" % [str(car["name"]).to_upper(), int(car["position"])], 26, true)
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.disabled = not ready
 		b.pressed.connect(func() -> void: Career.prepare_drive(id))
 		col.add_child(b)
+		_effects(col, id)
 	var quick := UIKit.button("DONE\nWITH QUALIFYING" if quali_day else "SIMULATE\nTHE RACE", 26)
 	quick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	quick.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -119,3 +121,13 @@ func _ready() -> void:
 
 func _draw() -> void:
 	UIKit.draw_backdrop(self, Rect2(Vector2.ZERO, size))
+
+
+## How this driver handles the car, compared with the other one you could drive.
+func _effects(col: Control, id: String) -> void:
+	var other := {}
+	for car in _sim.player_cars():
+		if car["id"] != id:
+			other = Career.driver(car["id"])
+	col.add_child(UIKit.label("AT THE WHEEL", 12, UIKit.HOT))
+	HubPanels.driver_effects(col, Career.driver(id), other, 12)

@@ -12,6 +12,18 @@ extends RefCounted
 
 const REFERENCE_MU := 1.5
 
+## Pace control. PRESERVE softens how power arrives (a gentler throttle map and a slower torque
+## build-up), so it saves tyres only because it spins them less - there is no wear bonus.
+## PUSH deploys extra power with a sharper response, paid for from a limited energy store.
+enum Pace { PRESERVE, BALANCED, PUSH }
+const PACE_NAMES: PackedStringArray = ["PRESERVE", "BALANCED", "PUSH"]
+const PACE_POWER: PackedFloat32Array = [0.96, 1.0, 1.08]        # drive force multiplier
+const PACE_CURVE: PackedFloat32Array = [1.6, 1.0, 0.8]          # throttle map exponent
+const PACE_RAMP: PackedFloat32Array = [2.2, 1000.0, 1000.0]     # how fast torque can build (1/s); BALANCED is as before
+const ENERGY_PUSH_DRAIN := 7.0       # % per second at full throttle while pushing
+const ENERGY_HARVEST := 9.0          # % per second under full braking at speed
+const ENERGY_COAST_HARVEST := 1.5    # % per second off throttle in PRESERVE
+
 var config: VehiclePhysicsConfig
 var stats: CarStats
 var engine := EngineModel.new()
@@ -29,6 +41,14 @@ var stability_assist := 0.0
 var grip_scale := 1.0
 ## 0..1: how much a damaged car has lost (power and grip).
 var damage_loss := 0.0
+## The driver's share of the car (DriverPerformance). null = the full car, as in the garage.
+var driver: DriverPerformance
+var pace_mode := Pace.BALANCED
+## 0..100: energy for PUSH. Harvested under braking, spent deploying extra power.
+var energy := 100.0
+## True while PUSH is actually deploying extra power this step.
+var deploying := false
+var _throttle_out := 0.0
 var _rear_slide := 0.0
 
 # --- outputs of the latest step (read by controller, HUD, telemetry, debug overlay)
@@ -89,10 +109,12 @@ func reset() -> void:
 	accel_local = Vector2.ZERO
 	yaw_accel = 0.0
 	_rpm_flare = 0.0
+	_throttle_out = 0.0
 	display_rpm = engine.idle_rpm
 
 
 func reset_wear_and_heat() -> void:
+	energy = 100.0
 	front_tire.reset()
 	rear_tire.reset()
 	brakes.reset()
@@ -109,6 +131,18 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	var dir := 1.0 if vx >= 0.0 else -1.0
 	# Forces that oppose motion fade out near standstill so the car settles instead of jittering.
 	var rest_scale := clampf(absf(vx) / 1.2, 0.0, 1.0)
+
+	# ---- pace control: the throttle map and how fast torque builds, then the energy store
+	var mode := clampi(pace_mode, 0, 2)
+	var mapped := pow(clampf(throttle_input, 0.0, 1.0), PACE_CURVE[mode])
+	_throttle_out = move_toward(_throttle_out, mapped, PACE_RAMP[mode] * delta) if mapped > _throttle_out else mapped
+	throttle_input = _throttle_out
+	deploying = mode == Pace.PUSH and energy > 0.0 and throttle_input > 0.05
+	if deploying:
+		energy = maxf(0.0, energy - ENERGY_PUSH_DRAIN * throttle_input * delta)
+	energy = minf(100.0, energy + ENERGY_HARVEST * brake_input * clampf(speed / 40.0, 0.0, 1.0) * delta)
+	if mode == Pace.PRESERVE and throttle_input < 0.05:
+		energy = minf(100.0, energy + ENERGY_COAST_HARVEST * clampf(speed / 30.0, 0.0, 1.0) * delta)
 
 	# ---- steering: input requests a front wheel angle; lock shrinks with speed
 	var steer_target := steer_input * c.max_steer_angle(vx)
@@ -130,6 +164,10 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	# Stability assist trims power while the rear is stepping out (uses last step's slide).
 	drive_force *= 1.0 - config.stability_torque_cut * stability_assist * _rear_slide
 	drive_force *= 1.0 - 0.22 * damage_loss
+	drive_force *= PACE_POWER[mode] if (mode != Pace.PUSH or deploying) else 1.0
+	if mode == Pace.PRESERVE:
+		# A softer map low down, where wheelspin happens: less torque out of slow corners.
+		drive_force *= lerpf(0.82, 1.0, clampf(speed / 35.0, 0.0, 1.0))
 
 	# ---- axle loads: static + longitudinal transfer + downforce
 	aero.update(vx)
@@ -142,6 +180,12 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	# ---- grip budget per axle
 	front_limit = front_tire.grip_coefficient() * c.tire_grip_multiplier * stats.front_mech_grip * c.load_factor(front_load, c.front_reference_load) * front_load * _surface_grip(surface_front, stats.front_curb)
 	rear_limit = rear_tire.grip_coefficient() * c.tire_grip_multiplier * stats.rear_mech_grip * c.rear_grip_bias * c.load_factor(rear_load, c.rear_reference_load) * rear_load * _surface_grip(surface_rear, stats.rear_curb)
+	# Driver, after surface and tyres: a wet-weather specialist finds more of the wet grip.
+	var lat := 1.0
+	if driver:
+		front_limit *= driver.wet_grip
+		rear_limit *= driver.wet_grip
+		lat = driver.lateral
 
 	# ---- slip angles. The velocity floor keeps atan2 well-behaved at low speed, and scaling
 	# the steer term by the same ratio makes the model converge on plain kinematic steering
@@ -161,8 +205,8 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	var slide_r := clampf((absf(alpha_r) - peak_slip_angle) / 0.22, 0.0, 1.0)
 	front_limit *= 1.0 - c.slide_grip_falloff * slide_f
 	rear_limit *= 1.0 - c.slide_grip_falloff * slide_r
-	var fy_f := -front_limit * tanh(stiff_f * alpha_f)
-	var fy_r := -rear_limit * tanh(stiff_r * alpha_r)
+	var fy_f := -front_limit * lat * tanh(stiff_f * alpha_f)
+	var fy_r := -rear_limit * lat * tanh(stiff_r * alpha_r)
 
 	# ---- longitudinal demand
 	var brake_f := brakes.front_force(brake_input) * rest_scale
@@ -176,6 +220,10 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 		# never finds the last few percent a careful foot can.
 		var cap_f := front_limit * c.abs_levels[abs_level]
 		var cap_r := rear_limit * c.abs_levels[abs_level]
+		if driver:
+			# ABS holds the driver's own lock point, which a narrow braking window brings closer.
+			cap_f *= driver.braking / driver.lock_sensitivity
+			cap_r *= driver.braking / driver.lock_sensitivity
 		if brake_f > cap_f:
 			brake_f = cap_f
 			abs_active = speed > 3.0
@@ -184,6 +232,8 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 			abs_active = speed > 3.0
 	if tc_level > 0 and absf(drive_force) > 0.0 and brake_input < 0.05:
 		var cap := avail_r * c.tc_levels[tc_level]
+		if driver:
+			cap *= driver.traction / driver.spin_sensitivity
 		if absf(drive_force) > cap and drive_force * transmission.total_ratio() > 0.0:
 			drive_force = signf(drive_force) * cap
 			tc_active = speed > 2.0
@@ -234,7 +284,14 @@ func _surface_grip(surface: int, curb_compliance: float) -> float:
 func _combine(fx_req: float, fy_req: float, limit: float, avail: float, tire: TireModel, driving: bool, slide: float, speed: float) -> Vector2:
 	var fx := clampf(fx_req, -limit * config.max_longitudinal_overdrive, limit * config.max_longitudinal_overdrive)
 	var fy := fy_req
-	tire.slip_ratio = maxf(0.0, absf(fx_req) / maxf(avail, 1.0) - 1.0)
+	var sensitivity := 1.0
+	if driver and absf(fx) > 0.0:
+		# The driver reaches only part of the braking / traction grip; asking for more than
+		# their window allows locks or spins the tyre sooner. Never more than the car has.
+		var reach := driver.traction if driving else driver.braking
+		fx = clampf(fx, -limit * reach, limit * reach)
+		sensitivity = driver.spin_sensitivity if driving else driver.lock_sensitivity
+	tire.slip_ratio = maxf(0.0, absf(fx_req) * sensitivity / maxf(avail, 1.0) - 1.0)
 	var saturated := tire.slip_ratio > 0.04 and speed > 1.5
 	tire.locked = saturated and not driving
 	tire.spinning = saturated and driving
