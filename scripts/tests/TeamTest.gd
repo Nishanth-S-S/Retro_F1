@@ -94,6 +94,30 @@ func _ready() -> void:
 		if Career.day_event(day)["type"] == "rest":
 			rests += 1
 	_check(rests >= 1 and rests <= 3, "%d rest days in a fortnight (1-3)" % rests)
+	# --- engines your engineers build
+	var spec_id := ""
+	for eid: String in Career.engineers():
+		if str(Career.engineer(eid)["spec"]) == "power":
+			spec_id = eid
+	if spec_id == "":
+		spec_id = str(Career.engineers()[0])
+		Career.engineer(spec_id)["spec"] = "power"
+	Career.engineer(spec_id)["skill"] = 50
+	_check(Career.request_engine(spec_id, "screamer") != "", "a weak engine specialist can't design a better engine")
+	Career.engineer(spec_id)["skill"] = 90
+	GameManager.profile["research_points"] = 500
+	_check(Career.request_engine(spec_id, "screamer") == "" and Career.rp() < 500, "a top engine specialist starts a V10 for research points")
+	_check(Career.request_engine(spec_id, "torque") != "", "one engine project at a time")
+	var built_before: int = (GameManager.profile["custom_parts"] as Array).size()
+	for day in 20:
+		if Career.engine_project().is_empty():
+			break
+		Career.state()["date"] = Career.today() + 1
+		Career._engine_day()
+	var custom: Array = GameManager.profile["custom_parts"]
+	var engine_id: String = custom[custom.size() - 1]["id"] if custom.size() > built_before else ""
+	_check(engine_id != "" and PartDB.get_part(engine_id) != null and GameManager.is_owned(engine_id), "the new engine is in the garage: %s, %d kW" % [PartDB.get_part(engine_id).display_name if engine_id != "" else "-", int(PartDB.get_part(engine_id).stat("power_kw")) if engine_id != "" else 0])
+	_check(GameManager.install_part("engine", engine_id), "and it fits the car")
 	# --- wind tunnel
 	var runs := Career.tunnel_runs_left()
 	var outcome := Career.run_tunnel("car1")

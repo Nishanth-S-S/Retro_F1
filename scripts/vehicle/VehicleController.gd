@@ -69,6 +69,9 @@ var autopilot := false
 var perf: DriverPerformance
 ## Metres driven since the start of a race, for fatigue.
 var race_distance := 0.0
+## race_distance when this set of tyres went on.
+var stint_start := 0.0
+var _last_tyre := 1.0
 ## The player's corner-by-corner driving style (player car only).
 var style: DrivingStyle
 var _was_enabled := false
@@ -240,9 +243,14 @@ func _update_driver(delta: float) -> void:
 	var racing := GameManager.session_mode == GameManager.MODE_RACE
 	if controls_enabled and not _was_enabled and speed < 1.0 and racing:
 		perf.begin_launch()
+		_set_tyre_budget()
 	_was_enabled = controls_enabled
 	if controls_enabled and racing:
 		race_distance += speed * delta
+	var tyre := tyre_life()
+	if tyre > _last_tyre + 0.2:
+		stint_start = race_distance          # fresh tyres: a new budget starts here
+	_last_tyre = tyre
 	var progress_fraction := -1.0
 	if racing and track and track.length > 0.0:
 		progress_fraction = race_distance / (maxf(1.0, float(GameManager.race_laps)) * track.length)
@@ -255,6 +263,39 @@ func _update_driver(delta: float) -> void:
 			style = DrivingStyle.new(track)
 			GameManager.last_style = {}
 		style.update(self, delta)
+
+
+## The tyre budget: $100 a set, sized so pushing all the way to the planned stop (or the flag,
+## when there is no stop) spends about $90 of it. Same rule for every car.
+func _set_tyre_budget() -> void:
+	if track == null or track.length <= 0.0:
+		return
+	var stops := 1 if GameManager.mandatory_stop and GameManager.session_weather == 0 else 0
+	var stint_m := maxf(1.0, float(GameManager.race_laps)) / float(stops + 1) * track.length
+	var scale := TireModel.REFERENCE_LIFE_M * 0.9 / maxf(stint_m, 500.0)
+	physics.front_tire.stint_scale = scale
+	physics.rear_tire.stint_scale = scale
+
+
+## 1 = new tyres ($100 left), 0 = gone (the worse axle).
+func tyre_life() -> float:
+	return minf(physics.front_tire.wear, physics.rear_tire.wear)
+
+
+## Where the budget should be by now if it is spent evenly to the planned stop (-1 outside races).
+func tyre_target() -> float:
+	var stint := stint_length()
+	if stint <= 0.0:
+		return -1.0
+	return clampf(1.0 - (race_distance - stint_start) / stint, 0.0, 1.0)
+
+
+## Metres of tyre budget each stint is planned for (0 outside races).
+func stint_length() -> float:
+	if track == null or GameManager.session_mode != GameManager.MODE_RACE:
+		return 0.0
+	var stops := 1 if GameManager.mandatory_stop and GameManager.session_weather == 0 else 0
+	return maxf(1.0, float(GameManager.race_laps)) / float(stops + 1) * track.length
 
 
 ## Nearest car: x = closeness 0..1 (smooth with distance), y = attacking 0..1, z = defending 0..1.

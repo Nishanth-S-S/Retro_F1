@@ -12,18 +12,6 @@ extends RefCounted
 
 const REFERENCE_MU := 1.5
 
-## Pace control. PRESERVE softens how power arrives (a gentler throttle map and a slower torque
-## build-up), so it saves tyres only because it spins them less - there is no wear bonus.
-## PUSH deploys extra power with a sharper response, paid for from a limited energy store.
-enum Pace { PRESERVE, BALANCED, PUSH }
-const PACE_NAMES: PackedStringArray = ["PRESERVE", "BALANCED", "PUSH"]
-const PACE_POWER: PackedFloat32Array = [0.96, 1.0, 1.08]        # drive force multiplier
-const PACE_CURVE: PackedFloat32Array = [1.6, 1.0, 0.8]          # throttle map exponent
-const PACE_RAMP: PackedFloat32Array = [2.2, 1000.0, 1000.0]     # how fast torque can build (1/s); BALANCED is as before
-const ENERGY_PUSH_DRAIN := 7.0       # % per second at full throttle while pushing
-const ENERGY_HARVEST := 9.0          # % per second under full braking at speed
-const ENERGY_COAST_HARVEST := 1.5    # % per second off throttle in PRESERVE
-
 var config: VehiclePhysicsConfig
 var stats: CarStats
 var engine := EngineModel.new()
@@ -43,12 +31,6 @@ var grip_scale := 1.0
 var damage_loss := 0.0
 ## The driver's share of the car (DriverPerformance). null = the full car, as in the garage.
 var driver: DriverPerformance
-var pace_mode := Pace.BALANCED
-## 0..100: energy for PUSH. Harvested under braking, spent deploying extra power.
-var energy := 100.0
-## True while PUSH is actually deploying extra power this step.
-var deploying := false
-var _throttle_out := 0.0
 var _rear_slide := 0.0
 
 # --- outputs of the latest step (read by controller, HUD, telemetry, debug overlay)
@@ -109,12 +91,10 @@ func reset() -> void:
 	accel_local = Vector2.ZERO
 	yaw_accel = 0.0
 	_rpm_flare = 0.0
-	_throttle_out = 0.0
 	display_rpm = engine.idle_rpm
 
 
 func reset_wear_and_heat() -> void:
-	energy = 100.0
 	front_tire.reset()
 	rear_tire.reset()
 	brakes.reset()
@@ -131,18 +111,6 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	var dir := 1.0 if vx >= 0.0 else -1.0
 	# Forces that oppose motion fade out near standstill so the car settles instead of jittering.
 	var rest_scale := clampf(absf(vx) / 1.2, 0.0, 1.0)
-
-	# ---- pace control: the throttle map and how fast torque builds, then the energy store
-	var mode := clampi(pace_mode, 0, 2)
-	var mapped := pow(clampf(throttle_input, 0.0, 1.0), PACE_CURVE[mode])
-	_throttle_out = move_toward(_throttle_out, mapped, PACE_RAMP[mode] * delta) if mapped > _throttle_out else mapped
-	throttle_input = _throttle_out
-	deploying = mode == Pace.PUSH and energy > 0.0 and throttle_input > 0.05
-	if deploying:
-		energy = maxf(0.0, energy - ENERGY_PUSH_DRAIN * throttle_input * delta)
-	energy = minf(100.0, energy + ENERGY_HARVEST * brake_input * clampf(speed / 40.0, 0.0, 1.0) * delta)
-	if mode == Pace.PRESERVE and throttle_input < 0.05:
-		energy = minf(100.0, energy + ENERGY_COAST_HARVEST * clampf(speed / 30.0, 0.0, 1.0) * delta)
 
 	# ---- steering: input requests a front wheel angle; lock shrinks with speed
 	var steer_target := steer_input * c.max_steer_angle(vx)
@@ -164,10 +132,6 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	# Stability assist trims power while the rear is stepping out (uses last step's slide).
 	drive_force *= 1.0 - config.stability_torque_cut * stability_assist * _rear_slide
 	drive_force *= 1.0 - 0.22 * damage_loss
-	drive_force *= PACE_POWER[mode] if (mode != Pace.PUSH or deploying) else 1.0
-	if mode == Pace.PRESERVE:
-		# A softer map low down, where wheelspin happens: less torque out of slow corners.
-		drive_force *= lerpf(0.82, 1.0, clampf(speed / 35.0, 0.0, 1.0))
 
 	# ---- axle loads: static + longitudinal transfer + downforce
 	aero.update(vx)
@@ -243,6 +207,9 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	# ---- traction circle
 	front_force = _combine(fx_f_req, fy_f, front_limit, avail_f, front_tire, false, slide_f, speed)
 	rear_force = _combine(fx_r_req, fy_r, rear_limit, avail_r, rear_tire, drive_force * dir > 0.0, slide_r, speed)
+	# The tyre budget: how much grip went into accelerating or braking this step.
+	front_tire.long_usage = absf(front_force.x) / maxf(front_limit, 1.0)
+	rear_tire.long_usage = absf(rear_force.x) / maxf(rear_limit, 1.0)
 
 	# ---- sum forces in the body frame
 	var cs := cos(steer_angle)

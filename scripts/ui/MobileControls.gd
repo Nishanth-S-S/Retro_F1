@@ -3,8 +3,7 @@ extends Control
 ## Touch controls. Left thumb: a horizontal analog steering strip. Right thumb, in the default
 ## SPLIT layout: a BRAKE button whose pressure follows where you hold it (low on the button =
 ## full brake, slide up to bleed it off for trail braking) and a THROTTLE slider that springs
-## back when you let go. The classic PEDAL layout keeps one up/down pedal. Above the pedals,
-## the pace control (PRESERVE / BALANCED / PUSH) and the energy PUSH spends.
+## back when you let go. The classic PEDAL layout keeps one up/down pedal.
 ## Every control tracks its own finger, so steering, braking and throttle overlap freely.
 
 const STEER_HALF_RANGE := 150.0
@@ -12,10 +11,9 @@ const PEDAL_HALF_RANGE := 135.0
 const DEADZONE := 0.05
 ## Lightest brake a touch on the button gives (top edge); the bottom edge is full brake.
 const BRAKE_MIN := 0.3
-const PACE_COLORS := ["5fb7ff", "c9ced6", "ff9d3a"]
 
 var input: VehicleInput
-## The player's car (pace control and energy). Set by RaceManager.
+## The player's car (for the corner card). Set by RaceManager.
 var car: VehicleController
 var _steer_finger := -1
 var _pedal_finger := -1
@@ -46,7 +44,7 @@ func _split() -> bool:
 
 
 func _process(_delta: float) -> void:
-	# The energy bar moves on its own.
+	# The corner card fades on its own.
 	if car:
 		queue_redraw()
 
@@ -75,20 +73,6 @@ func _brake_rect() -> Rect2:
 	return Rect2(t.position.x - 26.0 - w, t.end.y - h, w, h)
 
 
-## The pace buttons sit above the steering strip, clear of the pit and DRS buttons.
-func _pace_rect(mode: int) -> Rect2:
-	var sc := _steer_center()
-	var w := 92.0
-	var left := sc.x - (w * 1.5 + 6.0)
-	return Rect2(left + mode * (w + 6.0), sc.y - 30.0 - 92.0, w, 44.0)
-
-
-func _energy_rect() -> Rect2:
-	var a := _pace_rect(0)
-	var b := _pace_rect(2)
-	return Rect2(a.position.x, a.end.y + 8.0, b.end.x - a.position.x, 12.0)
-
-
 ## Screen areas of the controls (used by the tutorial spotlight).
 func steer_rect() -> Rect2:
 	var c := _steer_center()
@@ -100,10 +84,6 @@ func pedal_rect() -> Rect2:
 		return _brake_rect().merge(_throttle_rect()).grow(10.0)
 	var c := _pedal_center()
 	return Rect2(c - Vector2(45.0, PEDAL_HALF_RANGE + 30.0), Vector2(90.0, PEDAL_HALF_RANGE * 2.0 + 60.0))
-
-
-func pace_rect() -> Rect2:
-	return _pace_rect(0).merge(_pace_rect(2)).merge(_energy_rect()).grow(8.0)
 
 
 ## Tutorial text for the pedal area.
@@ -126,19 +106,10 @@ func _in_pedal_zone(p: Vector2) -> bool:
 func _input(event: InputEvent) -> void:
 	if not visible or input == null or get_tree().paused:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var key := (event as InputEventKey).keycode
-		if key >= KEY_1 and key <= KEY_3:
-			set_pace(key - KEY_1)
-		return
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		var p := touch.position
 		if touch.pressed:
-			for mode in 3:
-				if _pace_rect(mode).grow(6.0).has_point(p):
-					set_pace(mode)
-					return
 			if _steer_finger == -1 and _in_steer_zone(p):
 				_steer_finger = touch.index
 				_set_steer(p)
@@ -177,14 +148,6 @@ func _input(event: InputEvent) -> void:
 		elif drag.index == _brake_finger:
 			_set_brake(drag.position)
 		_push()
-
-
-## 0 = PRESERVE, 1 = BALANCED, 2 = PUSH.
-func set_pace(mode: int) -> void:
-	if car:
-		car.physics.pace_mode = clampi(mode, 0, 2)
-		AudioManager.play("click", -12.0, 0.9 + 0.1 * mode)
-	queue_redraw()
 
 
 func _set_steer(p: Vector2) -> void:
@@ -254,7 +217,6 @@ func _draw() -> void:
 		_draw_split(white)
 	else:
 		_draw_pedal(white)
-	_draw_pace()
 	_draw_corner_card()
 
 
@@ -319,27 +281,6 @@ func _draw_pedal(white: Color) -> void:
 	var pedal_color := Color("5fe08a") if _pedal_value > 0.0 else (Color("ff5d5d") if _pedal_value < 0.0 else Color("c9ced6"))
 	draw_circle(pk, 26.0, Color(pedal_color, 0.85 if _pedal_finger != -1 else 0.5))
 	draw_arc(pk, 26.0, 0.0, TAU, 28, white, 2.0, true)
-
-
-func _draw_pace() -> void:
-	if car == null:
-		return
-	var font := get_theme_default_font()
-	var mode := car.physics.pace_mode
-	for i in 3:
-		var r := _pace_rect(i)
-		var color := Color(PACE_COLORS[i])
-		draw_rect(r, Color(color, 0.75) if i == mode else Color(0, 0, 0, 0.32))
-		draw_rect(r, Color(color, 0.9), false, 2.0)
-		draw_string(font, r.position + Vector2(0, r.size.y * 0.5 + 5.0), VehiclePhysics.PACE_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 13, Color.BLACK if i == mode else Color(1, 1, 1, 0.8))
-	# Energy for PUSH: harvested under braking, spent deploying.
-	var e := _energy_rect()
-	var energy := car.physics.energy / 100.0
-	draw_rect(e, Color(0, 0, 0, 0.4))
-	var bar := Color("ff9d3a") if car.physics.deploying else Color("ffd34d")
-	draw_rect(Rect2(e.position, Vector2(e.size.x * energy, e.size.y)), Color(bar, 0.85))
-	draw_rect(e, Color(1, 1, 1, 0.5), false, 1.0)
-	draw_string(font, e.position + Vector2(0, e.size.y + 14.0), "ENERGY %d%%" % int(round(energy * 100.0)), HORIZONTAL_ALIGNMENT_RIGHT, e.size.x, 12, Color(1, 1, 1, 0.75))
 
 
 func _arrow(tip: Vector2, dir: Vector2, color: Color) -> void:

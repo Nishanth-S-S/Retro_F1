@@ -25,7 +25,6 @@ func _ready() -> void:
 	GameManager.profile["career"] = {}
 	AudioServer.set_bus_mute(0, true)
 	_grip_budget()
-	_pace()
 	var track := TrackData.load_track("res://data/tracks/apex_lab.json")
 	_check(track.corners.size() == 2 and track.half_width >= 10.0, "Apex Lab: %d corners (%s), %.0f m wide, %.0f m lap" % [track.corners.size(), ", ".join(track.corners.map(func(c: Dictionary) -> String: return "r %.0f m" % float(c["radius"]))), track.half_width * 2.0, track.length])
 	process_physics_priority = 100        # after the AI has written its pedals
@@ -52,34 +51,6 @@ func _grip_budget() -> void:
 			phys.step(1.0 / 240.0, 30.0, 0.0, 0.0, 0.6, 0.0, brake, 0, 0)
 		lateral.append(absf(phys.accel_local.y))
 	_check(lateral[1] < lateral[0] * 0.9, "full brake while turning costs cornering grip (%.1f -> %.1f m/s2)" % [lateral[0], lateral[1]])
-
-
-## Full throttle out of a slow corner (25 km/h, no traction control) for 4 s in each pace mode.
-func _pace() -> void:
-	var out := {}
-	for mode in 3:
-		var phys := _physics()
-		phys.pace_mode = mode
-		phys.tc_level = 0
-		var v := 7.0
-		var spin := 0.0
-		var dist := 0.0
-		for i in 960:
-			phys.step(1.0 / 240.0, v, 0.0, 0.0, 0.0, 1.0, 0.0, 0, 0)
-			v += phys.accel_local.x / 240.0
-			dist += v / 240.0
-			if phys.rear_tire.spinning:
-				spin += 1.0 / 240.0
-		out[mode] = [dist, spin, phys.energy]
-		print("     %-9s  %.1f m in 4 s  wheelspin %.2f s  energy %.0f%%" % [VehiclePhysics.PACE_NAMES[mode], dist, spin, phys.energy])
-	_check(out[2][0] > out[1][0] and out[1][0] > out[0][0], "PUSH is quickest, PRESERVE slowest off a corner")
-	_check(out[0][1] <= out[1][1] and out[1][1] <= out[2][1], "PRESERVE spins the rears least, PUSH most")
-	_check(out[2][2] < 90.0 and out[1][2] >= 99.9, "PUSH spends energy, BALANCED does not")
-	var phys := _physics()
-	phys.energy = 40.0
-	for i in 480:
-		phys.step(1.0 / 240.0, 60.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0, 0)
-	_check(phys.energy > 50.0, "braking recharges energy (40%% -> %.0f%%)" % phys.energy)
 
 
 ## Two laps of Apex Lab with the AI at the wheel and the style tracker reading it.

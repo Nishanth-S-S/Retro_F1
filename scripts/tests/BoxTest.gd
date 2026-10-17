@@ -44,6 +44,11 @@ func _ready() -> void:
 			driver.queue_free()
 			driver = null
 			race.player.is_player = true
+		# Leaving the box is the player's job: hold the throttle once the crew is done.
+		if race.pit_phase == "out":
+			Input.action_press("throttle")
+		else:
+			Input.action_release("throttle")
 		var phase := race.pit_phase if race.pit_phase != "" else "racing"
 		if phases.is_empty() or phases[phases.size() - 1] != phase:
 			phases.append(phase)

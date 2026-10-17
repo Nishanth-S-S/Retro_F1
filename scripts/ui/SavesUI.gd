@@ -1,6 +1,6 @@
 extends Control
-## Career select. Each of the six saves is one career: continue it, or start a new one in
-## an empty slot. The garage and records travel with the career.
+## Save select. Each of the six saves is one career or one Road to Glory: continue it, or
+## start a new one (of the kind you came here for) in an empty slot.
 
 var _delete_mode := false
 var _grid: GridContainer
@@ -20,7 +20,7 @@ func _ready() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
-	root.add_child(UIKit.title_bar("CAREERS"))
+	root.add_child(UIKit.title_bar("ROAD TO GLORY" if GameManager.saves_mode == "glory" else "CAREERS"))
 	_grid = GridContainer.new()
 	_grid.columns = 3
 	_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -59,13 +59,28 @@ func _rebuild() -> void:
 		if i == SaveManager.slot:
 			data = GameManager.profile
 		var career: Dictionary = data.get("career", {})
-		var running: bool = not career.is_empty() and career.get("active", false)
-		var frame := Frame.make("CAREER %d" % i, 8)
+		var glory: Dictionary = data.get("glory", {})
+		var is_glory: bool = not glory.is_empty()
+		var running: bool = (not career.is_empty() and career.get("active", false)) or is_glory
+		var frame := Frame.make("SAVE %d" % i, 8)
 		frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_grid.add_child(frame)
 		frame.body.alignment = BoxContainer.ALIGNMENT_CENTER
-		if running:
+		if is_glory:
+			var you: Dictionary = glory["field"]["me"]
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 12)
+			frame.body.add_child(row)
+			var look: Dictionary = you["look"]
+			row.add_child(Art.make(Vector2(84, 84), func(a: Control) -> void: PixelArt.draw_portrait(a, Rect2(Vector2.ZERO, a.size), look, UIKit.WARM, Color("d8e6dc"))))
+			var info := VBoxContainer.new()
+			info.add_theme_constant_override("separation", 2)
+			row.add_child(info)
+			info.add_child(UIKit.label(str(you["name"]).to_upper(), 20))
+			info.add_child(UIKit.label("ROAD TO GLORY  ·  %s" % ("RETIRED" if glory.get("retired", false) else str(glory["series"])), 15, UIKit.HOT))
+			info.add_child(UIKit.label("SEASON %d  ·  %d" % [int(glory["season"]), int(glory["year"])], 15, UIKit.TEXT_DIM))
+		elif running:
 			var team := Career.team(str(career["team"]))
 			var row := HBoxContainer.new()
 			row.add_theme_constant_override("separation", 12)
@@ -81,7 +96,7 @@ func _rebuild() -> void:
 			var empty := UIKit.label("EMPTY", 26, UIKit.TEXT_DIM)
 			empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			frame.body.add_child(empty)
-		var text := "CONTINUE" if running else "NEW CAREER"
+		var text := "CONTINUE" if running else ("NEW ROAD TO GLORY" if GameManager.saves_mode == "glory" else "NEW CAREER")
 		if _delete_mode:
 			text = "DELETE"
 		var b := UIKit.button(text, 22, running or _delete_mode)
@@ -97,5 +112,10 @@ func _rebuild() -> void:
 				_rebuild()
 			else:
 				GameManager.switch_slot(i)
-				SceneManager.goto("career" if Career.active() else "career_start"))
+				if not GameManager.profile.get("glory", {}).is_empty():
+					SceneManager.goto("glory")
+				elif Career.active():
+					SceneManager.goto("career")
+				else:
+					SceneManager.goto("glory_start" if GameManager.saves_mode == "glory" else "career_start"))
 		frame.body.add_child(b)

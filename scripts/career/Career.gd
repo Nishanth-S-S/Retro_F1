@@ -1250,6 +1250,9 @@ func person(id: String) -> Dictionary:
 		var p: Dictionary = state()["people"][id].duplicate()
 		p["kind"] = "staff"
 		return p
+	if state().get("staff", {}).has(id):
+		var e: Dictionary = state()["staff"][id]
+		return {"id": id, "name": e["name"], "role": str(ENGINEER_SPECS[e["spec"]]["name"]), "team": e["team"], "look": e["look"], "kind": "staff"}
 	var d := driver(id)
 	if d.is_empty():
 		return {}
@@ -1374,6 +1377,9 @@ func resolve_offer(index: int, accept: bool) -> String:
 				result = _sell_driver(offer["driver"], offer["team"], int(offer["cash"]))
 			"poach_eng":
 				result = _lose_engineer(offer["engineer"], offer["team"], int(offer["cash"]))
+			"engine":
+				var error := request_engine(str(offer["engineer"]), str(offer["concept"]))
+				result = error if error != "" else "%s is building it. Ready in %d days." % [engineer(str(offer["engineer"]))["name"], engine_build_days(engineer(str(offer["engineer"])))]
 	elif offer["type"] == "poach":
 		result = _counter_poach(offer)
 	elif offer["type"] == "poach_eng":
@@ -2489,6 +2495,7 @@ func next_day() -> bool:
 			choices[id] = "physio"
 		apply_rest(choices)
 	c["date"] = today() + 1
+	_engine_day()
 	_daily_news()
 	GameManager.save()
 	return true
@@ -2778,3 +2785,114 @@ func apply_rest(choices: Dictionary) -> void:
 				d["morale"] = maxi(5, int(d["morale"]) - 3)
 	c["rest_day"] = today()
 	GameManager.save()
+
+
+# ---------------------------------------------------------------- engines your engineers build
+
+## What an engine specialist can design. Each trades power, revs, weight, economy and response.
+const ENGINE_CONCEPTS := {
+	"screamer": {"name": "V10 SCREAMER", "label": "V10 Screamer", "note": "Revs to the sky: the most power, thirsty and hot.", "power": 1.1, "rpm": 12500, "mass": 1.05, "efficiency": 0.8, "heat": 1.2, "response": 1.0, "cost": 70,
+		"curve": [[0.15, 0.5], [0.4, 0.75], [0.62, 0.92], [0.85, 1.0], [1.0, 0.95]]},
+	"torque": {"name": "TORQUE V8", "label": "Torque V8", "note": "Huge pull out of slow corners, runs out of revs early.", "power": 1.02, "rpm": 9800, "mass": 1.0, "efficiency": 0.92, "heat": 1.05, "response": 0.9, "cost": 55,
+		"curve": [[0.15, 0.78], [0.4, 0.97], [0.62, 1.0], [0.85, 0.9], [1.0, 0.78]]},
+	"light": {"name": "FEATHER V6", "label": "Feather V6", "note": "Light and eager; less outright power.", "power": 0.95, "rpm": 11000, "mass": 0.78, "efficiency": 1.08, "heat": 0.95, "response": 1.0, "cost": 50,
+		"curve": [[0.15, 0.6], [0.4, 0.86], [0.62, 1.0], [0.85, 0.96], [1.0, 0.86]]},
+	"hybrid": {"name": "HYBRID V6", "label": "Hybrid V6", "note": "Strong everywhere and easy on fuel, but heavy batteries.", "power": 1.05, "rpm": 10500, "mass": 1.12, "efficiency": 1.18, "heat": 1.0, "response": 0.95, "cost": 65,
+		"curve": [[0.15, 0.7], [0.4, 0.92], [0.62, 1.0], [0.85, 0.97], [1.0, 0.88]]},
+}
+## Engine specialists below this skill can't design anything better than what is on the shelf.
+const ENGINE_MIN_SKILL := 55
+## Daily chance a good engine specialist texts you an idea (scaled by skill).
+const ENGINE_IDEA_CHANCE := 0.05
+
+
+## Days a design takes: better engineers are quicker.
+func engine_build_days(e: Dictionary) -> int:
+	return maxi(4, 16 - int(float(e.get("skill", 60)) / 8.0))
+
+
+func engine_cost(concept: String) -> int:
+	return int(round(float(ENGINE_CONCEPTS[concept]["cost"]) * research_discount("engine")))
+
+
+func engine_project() -> Dictionary:
+	return state().get("engine_project", {})
+
+
+## Asks an engine specialist to design a new engine. Returns "" or why not.
+func request_engine(engineer_id: String, concept: String) -> String:
+	var e := engineer(engineer_id)
+	if e.is_empty() or not engineers().has(engineer_id):
+		return "They don't work for you."
+	if str(e["spec"]) != "power":
+		return "%s: \"Engines aren't my area - ask an engine specialist.\"" % str(e["name"]).get_slice(" ", 0)
+	if int(e["skill"]) < ENGINE_MIN_SKILL:
+		return "%s: \"Honestly? I can't beat what we've already got. Not yet.\"" % str(e["name"]).get_slice(" ", 0)
+	if not engine_project().is_empty():
+		return "The engine shop is already busy with the %s." % ENGINE_CONCEPTS[engine_project()["concept"]]["name"]
+	if not ENGINE_CONCEPTS.has(concept):
+		return "Unknown design."
+	var cost := engine_cost(concept)
+	if rp() < cost:
+		return "That design needs %d research points." % cost
+	add_rp(-cost)
+	state()["engine_project"] = {"engineer": engineer_id, "concept": concept, "ready": today() + engine_build_days(e)}
+	GameManager.save()
+	return ""
+
+
+## Every day: finish a design that is due, or let a good engine specialist pitch one.
+func _engine_day() -> void:
+	var project := engine_project()
+	if not project.is_empty():
+		if today() >= int(project["ready"]):
+			_finish_engine(project)
+		return
+	for id: String in engineers():
+		var e := engineer(id)
+		if str(e["spec"]) != "power" or int(e["skill"]) < 70:
+			continue
+		if _rng.randf() < ENGINE_IDEA_CHANCE * (float(e["skill"]) - 60.0) / 35.0 and not _engine_idea_pending():
+			var keys: Array = ENGINE_CONCEPTS.keys()
+			var concept: String = keys[_rng.randi() % keys.size()]
+			var spec: Dictionary = ENGINE_CONCEPTS[concept]
+			add_message(id, "Boss, I've been sketching a %s. %s I think I can get about %d kW out of it. Want me to build it?" % [str(spec["name"]).to_lower(), spec["note"], int(round(_engine_power(e, concept)))],
+				{"type": "engine", "engineer": id, "concept": concept, "yes": "BUILD IT  %d RP" % engine_cost(concept), "no": "NOT NOW"})
+			return
+
+
+func _engine_idea_pending() -> bool:
+	for m: Dictionary in state()["inbox"]:
+		if not m["done"] and str(m["offer"].get("type", "")) == "engine":
+			return true
+	return false
+
+
+## Power a design will make in this engineer's hands.
+func _engine_power(e: Dictionary, concept: String) -> float:
+	var talent := clampf((float(e["skill"]) - 40.0) / 55.0, 0.0, 1.0)
+	return 285.0 * lerpf(0.85, 1.25, talent) * float(ENGINE_CONCEPTS[concept]["power"])
+
+
+func _finish_engine(project: Dictionary) -> void:
+	var e := engineer(str(project["engineer"]))
+	var concept: String = project["concept"]
+	var spec: Dictionary = ENGINE_CONCEPTS[concept]
+	var talent := clampf((float(e.get("skill", 60)) - 40.0) / 55.0, 0.0, 1.0)
+	var custom: Array = GameManager.profile["custom_parts"]
+	var surname := str(e.get("name", "Works")).get_slice(" ", 1)
+	var id := "custom_engine_%d" % (custom.size() + 1)
+	var entry := {
+		"id": id, "category": "engine", "display_name": "%s %s" % [surname, spec["label"]],
+		"description": "Designed in-house by %s. %s" % [e.get("name", "your engine shop"), spec["note"]],
+		"price": 0, "research_cost": 0, "mass": round(128.0 * float(spec["mass"]) * lerpf(1.05, 0.92, talent)),
+		"stats": {"power_kw": round(_engine_power(e, concept)), "redline_rpm": int(spec["rpm"]), "idle_rpm": 1800,
+			"fuel_efficiency": snappedf(float(spec["efficiency"]) * lerpf(0.95, 1.05, talent), 0.01), "heat_generation": snappedf(float(spec["heat"]) * lerpf(1.08, 0.94, talent), 0.01),
+			"throttle_response": snappedf(clampf(float(spec["response"]) * lerpf(0.85, 1.0, talent), 0.3, 1.0), 0.01), "torque_curve": spec["curve"]},
+	}
+	custom.append(entry)
+	PartDB.register(entry, "engine")
+	GameManager.profile["unlocked_parts"].append(id)
+	state()["engine_project"] = {}
+	add_message(str(project["engineer"]), "It's done - the %s is on the dyno and it's mega: %d kW at %d rpm. It's in the garage, fit it whenever you like." % [entry["display_name"], int(entry["stats"]["power_kw"]), int(entry["stats"]["redline_rpm"])])
+	EventBus.inventory_changed.emit()

@@ -10,6 +10,8 @@ const SCENES := {
 	"career_start": "res://scenes/career/CareerStart.tscn",
 	"raceday": "res://scenes/career/RaceDay.tscn",
 	"saves": "res://scenes/Saves.tscn",
+	"glory": "res://scenes/glory/GloryHub.tscn",
+	"glory_start": "res://scenes/glory/GloryStart.tscn",
 }
 const FADE_TIME := 0.16
 

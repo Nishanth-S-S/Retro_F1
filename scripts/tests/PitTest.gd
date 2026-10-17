@@ -38,6 +38,11 @@ func _ready() -> void:
 	while waited < 40.0:
 		await get_tree().create_timer(0.1).timeout
 		waited += 0.1
+		# Leaving the box is the player's job: hold the throttle once the crew is done.
+		if race.pit_phase == "out":
+			Input.action_press("throttle")
+		else:
+			Input.action_release("throttle")
 		if phases.is_empty() or phases[phases.size() - 1] != race.pit_phase:
 			phases.append(race.pit_phase if race.pit_phase != "" else "racing")
 		stop = maxf(stop, race._pit_total)

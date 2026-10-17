@@ -24,6 +24,26 @@ func _ready() -> void:
 		_by_category[category] = list
 
 
+## Adds (or replaces) a part designed during a save, e.g. an engine your engineers built.
+func register(entry: Dictionary, category: String) -> VehiclePart:
+	var part := VehiclePart.from_dict(entry, category)
+	var list: Array = _by_category.get(category, [])
+	if _parts.has(part.id):
+		list.erase(_parts[part.id])
+	_parts[part.id] = part
+	list.append(part)
+	return part
+
+
+## Removes the parts a save designed (when another save loads).
+func clear_custom() -> void:
+	for id: String in _parts.keys():
+		var part: VehiclePart = _parts[id]
+		if part.id.begins_with("custom_"):
+			(_by_category.get(part.category, []) as Array).erase(part)
+			_parts.erase(id)
+
+
 func get_part(id: String) -> VehiclePart:
 	return _parts.get(id, null)
 

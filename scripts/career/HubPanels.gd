@@ -455,11 +455,39 @@ static func staff_card(hub: Control, id: String, note: String = "") -> void:
 			hub._say(Career.fire_engineer(id))
 			hub._close_modal()
 			hub._show_tab(0))
+		if str(e["spec"]) == "power":
+			_engine_shop(hub, body, id)
 	else:
 		var fee := Career.engineer_buyout(e)
 		_action(actions, "HIRE" if fee == 0 else "POACH  -  %s BUYOUT" % UIKit.money(fee), true, func() -> void:
 			var error := Career.hire_engineer(id)
 			staff_card(hub, id, "HIRED" if error == "" else error))
+
+
+## An engine specialist can design you a new engine: pick a concept, pay research points, wait.
+static func _engine_shop(hub: Control, body: VBoxContainer, id: String) -> void:
+	var e := Career.engineer(id)
+	var frame := Frame.make("ENGINE SHOP", 6)
+	body.add_child(frame)
+	var project := Career.engine_project()
+	if not project.is_empty():
+		var days := maxi(0, int(project["ready"]) - Career.today())
+		hub._text(frame.body, "BUILDING THE %s  ·  READY IN %d DAY%s" % [Career.ENGINE_CONCEPTS[project["concept"]]["name"], days, "" if days == 1 else "S"], 18, UIKit.ACCENT)
+		return
+	if int(e["skill"]) < Career.ENGINE_MIN_SKILL:
+		hub._text(frame.body, "%s ISN'T GOOD ENOUGH YET TO BEAT THE ENGINES WE HAVE (SKILL %d OF %d NEEDED)." % [str(e["name"]).get_slice(" ", 0).to_upper(), int(e["skill"]), Career.ENGINE_MIN_SKILL], 15, UIKit.TEXT_DIM)
+		return
+	hub._text(frame.body, "ASK FOR A NEW ENGINE  ·  %d DAYS TO BUILD  ·  BETTER ENGINEERS MAKE MORE POWER" % Career.engine_build_days(e), 13, UIKit.TEXT_DIM)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	frame.body.add_child(row)
+	for concept: String in Career.ENGINE_CONCEPTS:
+		var spec: Dictionary = Career.ENGINE_CONCEPTS[concept]
+		var b := _action(row, "%s\n~%d kW  ·  %d RP" % [spec["name"], int(round(Career._engine_power(e, concept))), Career.engine_cost(concept)], false, func() -> void:
+			var error := Career.request_engine(id, concept)
+			staff_card(hub, id, "%s IS ON IT" % str(e["name"]).get_slice(" ", 0).to_upper() if error == "" else error), Career.rp() < Career.engine_cost(concept))
+		b.add_theme_font_size_override("font_size", 13)
+		b.tooltip_text = str(spec["note"])
 
 
 static func person_card(hub: Control, id: String) -> void:

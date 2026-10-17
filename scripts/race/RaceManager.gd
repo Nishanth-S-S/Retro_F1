@@ -171,10 +171,9 @@ func _ready() -> void:
 	CoachMarks.run_once(self, "race", func() -> Array: return [
 		[_controls.steer_rect(), "STEER here with your left thumb: slide left and right."],
 		[_controls.pedal_rect(), _controls.pedal_hint()],
-		[_controls.pace_rect(), "PACE: PRESERVE is gentle on the tyres, PUSH spends ENERGY for extra power. Braking recharges it."],
 		[_hud._map, "The MAP shows every car. Watch the weather in its corner."],
-		[_hud._status, "FUEL, TYRE WEAR and DAMAGE. When one runs low, arrows on the track point to the pit lane."],
-		[_hud._box, "Tap BOX and the car drives itself into the pits at the next pit entry. The stop runs itself."],
+		[_hud._status, "TYRES are a $100 budget that has to last to your pit stop. Hard acceleration and braking spend it fastest; the white tick shows where you should be. FUEL and DAMAGE too - arrows point to the pits when one runs low."],
+		[_hud._box, "Tap BOX: the car slides itself into the pits, the crew does the work, then YOU accelerate out."],
 		[_hud._drs, "DRS lights up on straights when you're within a second of the car ahead. Tap it to open the wing; braking closes it."],
 		[_hud.marks["cam"], "CAM switches between the driver's view and the overhead view."],
 		[_hud.marks["reset"], "Stuck? RESET puts you back on track for a 3-second penalty."],
@@ -193,14 +192,20 @@ func _instantiate(scene_path: String, fallback: Variant) -> Node:
 # ---------------------------------------------------------------- setup
 
 func _spawn_cars() -> void:
-	var slot_for_player := PLAYER_GRID_SLOT if mode == GameManager.MODE_RACE else 0
+	var slot_for_player := int(GameManager.career_race.get("grid_slot", PLAYER_GRID_SLOT)) if mode == GameManager.MODE_RACE else 0
 	var livery := PLAYER_COLOR
 	var livery2 := Color("23272e")
 	if Career.active():
 		# Your car wears the team's colours.
 		livery = Color(str(Career.my_team()["color"]))
 		livery2 = Color(str(Career.my_team()["color2"]))
-	player = _make_car(GameManager.setup.duplicate_setup(), "You", livery, true, 0, "res://scenes/components/Car.tscn", livery2)
+	var livery_override: Array = GameManager.career_race.get("livery", [])
+	if livery_override.size() == 2:
+		livery = Color(str(livery_override[0]))
+		livery2 = Color(str(livery_override[1]))
+	# Road to Glory races the series car, not the garage build.
+	var own_setup := CarSetup.from_dict(GameManager.career_race["setup"]) if GameManager.career_race.has("setup") else GameManager.setup.duplicate_setup()
+	player = _make_car(own_setup, "You", livery, true, 0, "res://scenes/components/Car.tscn", livery2)
 	_place_on_grid(player, slot_for_player)
 	player_timer = timers[0]
 	player_timer.lap_finished.connect(_on_player_lap)
@@ -232,7 +237,7 @@ func _spawn_cars() -> void:
 	var slot := 0
 	for i in profiles.size():
 		var profile: Dictionary = profiles[i]
-		if slot == PLAYER_GRID_SLOT:
+		if slot == slot_for_player:
 			slot += 1
 		# Difficulty shifts every rival's pace; rain costs grip, more for poor wet-weather drivers.
 		profile = profile.duplicate()
@@ -492,8 +497,15 @@ func _update_pit_stop(delta: float) -> void:
 			if pit_timer <= 0.0:
 				_finish_service()
 		"out":
+			# Your throttle takes you out: the crew keeps you in the lane and the limiter holds
+			# 80 km/h until the pit exit.
 			var past := player.progress - (track.pit_end - 70.0)
-			_autodrive(lerpf(lane, -2.5, clampf(past / 60.0, 0.0, 1.0)), PIT_SPEED if past < 0.0 else 40.0)
+			player.input.update_player(delta)
+			var throttle := player.input.throttle
+			var brake := player.input.brake
+			_autosteer(lerpf(lane, -2.5, clampf(past / 60.0, 0.0, 1.0)))
+			player.input.throttle = throttle if player.speed < PIT_SPEED or past >= 0.0 else 0.0
+			player.input.brake = brake
 			if player.progress > track.pit_end - 8.0:
 				pit_phase = ""
 				player.autopilot = false
@@ -521,7 +533,7 @@ func pit_reason() -> String:
 	if player.damage > 50.0:
 		return "HEAVY DAMAGE"
 	if tyre_life() < 0.3:
-		return "TYRES WORN"
+		return "TYRES SPENT"
 	if _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2:
 		return "MANDATORY STOP"
 	return ""
@@ -554,10 +566,10 @@ func _begin_pit() -> void:
 	_controls.release_all()
 	_controls_layer.visible = false
 	_camera.focus = track.position_at(track.pit_box, -(track.half_width + TrackData.PIT_WIDTH * 0.55))
-	EventBus.driver_message.emit("PIT LANE  -  80 KM/H", Color("ffb347"))
-	# Pick the next tyre now; it can be changed until the car leaves.
+	# The crew already knows which tyre goes on next: no menu, just the stop.
 	_pit_choice = _default_tyre()
-	_hud.show_tyre_choice(_tyre_options(), _pit_choice, _stop_still_required())
+	var name := PartDB.get_part(_pit_choice).display_name.to_upper() if PartDB.get_part(_pit_choice) else "NEW TYRES"
+	EventBus.driver_message.emit("BOX BOX  -  %s GOING ON" % name, Color("ffb347"))
 
 
 func _start_service() -> void:
@@ -593,7 +605,8 @@ func _finish_service() -> void:
 	_crew.queue_free()
 	_crew = null
 	pit_phase = "out"
-	EventBus.driver_message.emit("GO GO GO  -  %.1f s STOP" % _pit_total, Color("5fe08a"))
+	_controls_layer.visible = true
+	EventBus.driver_message.emit("GO GO GO  -  ACCELERATE OUT  (%.1f s STOP)" % _pit_total, Color("5fe08a"))
 	AudioManager.play("go", -6.0)
 
 
@@ -645,6 +658,15 @@ func _note_compound() -> void:
 ## Grand Prix rule: two different dry compounds in a dry race (wet tyres excuse it).
 func _stop_still_required() -> bool:
 	return mode == GameManager.MODE_RACE and GameManager.mandatory_stop and weather == 0 and not _used_wet and _dry_compounds.size() < 2
+
+
+## Steering only, for when the player has the pedals (leaving the pit box).
+func _autosteer(lateral: float) -> void:
+	var look := player.progress + 7.0 + player.speed * 0.45
+	var to_target := (track.position_at(look, lateral) - player.global_position).rotated(-player.rotation) / PPM
+	var dist := maxf(to_target.length(), 1.0)
+	var wheel := atan(2.0 * player.physics_config.wheelbase * to_target.y / (dist * dist))
+	player.input.steer = clampf(wheel / player.physics_config.max_steer_angle(player.speed), -1.0, 1.0)
 
 
 func _autodrive(lateral: float, target_speed: float) -> void:
@@ -790,7 +812,9 @@ func _driver_feedback(delta: float) -> void:
 	_feedback("FUEL LOW  -  BOX THIS LAP", player.uses_fuel and player.fuel < 22.0 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
 	_feedback("HEAVY DAMAGE  -  BOX FOR REPAIRS", player.damage > 60.0 and pit_phase == "", 0.5, 25.0, Color("ff5d5d"), delta)
 	_feedback("MANDATORY STOP  -  BOX THIS LAP OR +25 s", _stop_still_required() and player_timer.laps_completed >= GameManager.race_laps - 2 and player.progress > track.length * 0.5 and pit_phase == "", 0.5, 30.0, Color("ffb347"), delta)
-	_feedback("TYRES GONE  -  BOX FOR NEW ONES", tyre_life() < 0.3 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
+	_feedback("TYRE BUDGET NEARLY SPENT  -  BOX FOR NEW ONES", tyre_life() < 0.3 and pit_phase == "", 0.5, 25.0, Color("ffb347"), delta)
+	var plan := player.tyre_target()
+	_feedback("SPENDING THE TYRES TOO FAST  -  EASE INTO THE THROTTLE", plan >= 0.0 and tyre_life() < plan - 0.12 and tyre_life() >= 0.3 and pit_phase == "", 1.5, 30.0, Color("ffb347"), delta)
 
 
 func _feedback(text: String, condition: bool, hold: float, cooldown: float, color: Color, delta: float) -> void:
@@ -979,6 +1003,7 @@ func _end_session(next_scene: String) -> void:
 		SceneManager.goto("raceday")
 		return
 	var was_career := not GameManager.career_race.is_empty()
+	_session["ideal_lap"] = ideal_lap()
 	GameManager.last_results = RaceResults.build(mode, player_timer, positions.position_of(player), cars.size(), _classification(), telemetry, track, _session)
 	# A career race always goes through the results screen so the outcome is shown.
 	SceneManager.goto("results" if was_career else next_scene)

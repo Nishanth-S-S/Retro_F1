@@ -23,6 +23,8 @@ var consistency := 0.9
 var aggression := 0.5
 var tire_management := 0.7
 var error_rate := 0.08
+## Most throttle this driver will use: below 1.0 feeds the power in to save the tyre budget.
+var throttle_cap := 1.0
 ## Test hook: snap pedals to 0 % / 100 % to compare against smooth analog driving.
 var binary_pedals := false
 
@@ -136,7 +138,6 @@ func _physics_process(delta: float) -> void:
 	if pit_state != "":
 		target_v = _pit_speed(delta)
 	car.physics.aero.drs = drs_allowed and pit_state == "" and input.brake < 0.05
-	_choose_pace()
 	var error := target_v - v
 	var throttle_target := 0.0
 	var brake := 0.0
@@ -157,7 +158,10 @@ func _physics_process(delta: float) -> void:
 		_brake_trim = minf(1.0, _brake_trim + 1.5 * delta)
 	brake *= _brake_trim
 	_throttle = move_toward(_throttle, throttle_target, (5.0 if throttle_target > _throttle else 12.0) * delta)
-	input.throttle = _throttle
+	# The tyre budget: overspending against the plan to the stop means feeding the power in.
+	var budget_target := car.tyre_target()
+	var saving := budget_target >= 0.0 and car.tyre_life() < budget_target - 0.08 and not overtake.passing
+	input.throttle = minf(_throttle, minf(throttle_cap, 0.75 if saving else 1.0))
 	input.brake = brake
 	if binary_pedals:
 		input.throttle = 1.0 if throttle_target > 0.3 else 0.0
@@ -247,18 +251,3 @@ func _update_mistakes(idx: int) -> void:
 			2:
 				_line_error_target = (1.0 if _rng.randf() > 0.5 else -1.0) * 2.2
 	_speed_scale = clampf(_speed_scale, 0.9, 1.06)
-
-
-## AI pace control by the same rules as the player: push to attack while there is energy,
-## preserve worn tyres when nobody is close, otherwise balanced.
-func _choose_pace() -> void:
-	var p := car.physics
-	var attacking := overtake.passing or overtake.speed_cap < INF
-	if pit_state != "":
-		p.pace_mode = VehiclePhysics.Pace.BALANCED
-	elif attacking and p.energy > 15.0 and absf(car.input.steer) < 0.2:
-		p.pace_mode = VehiclePhysics.Pace.PUSH
-	elif not attacking and minf(p.front_tire.wear, p.rear_tire.wear) < 0.55:
-		p.pace_mode = VehiclePhysics.Pace.PRESERVE
-	else:
-		p.pace_mode = VehiclePhysics.Pace.BALANCED

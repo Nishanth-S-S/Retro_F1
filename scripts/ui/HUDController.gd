@@ -465,15 +465,22 @@ func _paint_status(a: Control) -> void:
 	if car.uses_fuel:
 		_bar(a, y, "FUEL", car.fuel / 100.0, GREEN if car.fuel > 25.0 else RED)
 		y += 24.0
-	# Tyre degradation: compound colour chip, life left, and the bar fading green -> red.
+	# Tyre degradation: compound colour chip, budget left, and the bar fading green -> red.
 	var life := manager.tyre_life()
 	var hot := p.front_tire.is_overheating() or p.rear_tire.is_overheating()
 	var wear_col := RED.lerp(AMBER, clampf(life / 0.5, 0.0, 1.0)).lerp(GREEN, clampf((life - 0.5) / 0.3, 0.0, 1.0))
 	_bar(a, y, "TYRES", life, RED if hot and fmod(_pulse, 0.5) < 0.25 else wear_col)
 	var compound: Color = CarVisual.COMPOUND_COLORS.get(car.setup.parts.get("tires", ""), Color.WHITE)
 	a.draw_circle(Vector2(50, y + 7.0), 5.0, compound)
-	a.draw_string_outline(f, Vector2(0, y + 12.0), "%d%%" % int(round(life * 100.0)), HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, 4, Color(0, 0, 0, 0.8))
-	a.draw_string(f, Vector2(0, y + 12.0), "%d%%" % int(round(life * 100.0)), HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, WHITE)
+	# The tyre budget: dollars left of the $100 this set started with, and a tick for where an
+	# even spend to the planned stop would be by now (left of the tick = overspending).
+	var target := car.tyre_target()
+	if target >= 0.0:
+		var tx := 58.0 + (a.size.x - 58.0) * target
+		a.draw_rect(Rect2(tx - 1.5, y - 2.0, 3.0, 18.0), Color(1, 1, 1, 0.95))
+	var money := "$%d" % int(round(life * 100.0))
+	a.draw_string_outline(f, Vector2(0, y + 12.0), money, HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, 4, Color(0, 0, 0, 0.8))
+	a.draw_string(f, Vector2(0, y + 12.0), money, HORIZONTAL_ALIGNMENT_RIGHT, a.size.x - 4.0, 11, AMBER if target >= 0.0 and life < target - 0.05 else WHITE)
 	y += 24.0
 	var hurt := car.damage / 100.0
 	_bar(a, y, "DAMAGE", hurt, GREEN.lerp(AMBER, clampf(hurt * 2.0, 0.0, 1.0)).lerp(RED, clampf(hurt * 2.0 - 1.0, 0.0, 1.0)))

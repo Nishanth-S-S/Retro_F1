@@ -44,6 +44,8 @@ var last_style: Dictionary = {}
 var active_mission := -1
 ## Set while a career grand prix is being driven by the player (see Career.prepare_drive).
 var career_race: Dictionary = {}
+## Which kind of save the saves screen is choosing for: "career" or "glory".
+var saves_mode := "career"
 ## Weather of the on-track session being started: 0 dry, 1 light rain, 2 heavy rain.
 var session_weather := 0
 ## Night race: the circuit is floodlit.
@@ -94,7 +96,7 @@ func default_profile() -> Dictionary:
 			owned.append(starting[slot])
 	var unlocked: Array = []
 	for id: String in PartDB.all_ids():
-		if PartDB.get_part(id).research_cost <= 0:
+		if PartDB.get_part(id).research_cost <= 0 and not id.begins_with("custom_"):
 			unlocked.append(id)
 	var start_setup := CarSetup.new()
 	for slot: String in starting:
@@ -115,6 +117,8 @@ func default_profile() -> Dictionary:
 		"claimed_targets": [],
 		"first_lap_done": false,
 		"dev_levels": {},
+		"custom_parts": [],
+		"glory": {},
 		"career": {},
 		"tutorial_seen": false,
 		"coach_seen": {},
@@ -147,6 +151,11 @@ func load_profile() -> void:
 		profile["records"]["falcon_ridge"] = {"best_lap": profile["best_lap"], "best_sectors": profile["best_sectors"], "best_lap_trace": profile["best_lap_trace"], "best_lap_corners": profile["best_lap_corners"], "ghost_data": profile["ghost_data"]}
 	if not loaded.is_empty() and not loaded.has("camera_default_applied"):
 		settings["camera_rotation"] = true          # rotating camera became the default
+	# Parts this save designed (engines your engineers built) join the part list.
+	PartDB.clear_custom()
+	for entry: Variant in profile["custom_parts"]:
+		if entry is Dictionary:
+			PartDB.register(entry, str(entry.get("category", "engine")))
 	# Nothing cached from the career that was open before (another slot) carries over.
 	Career.clear_weekend()
 	Career.last_note = ""
@@ -287,6 +296,8 @@ func apply_dev(target: CarSetup) -> CarSetup:
 func player_driver() -> Dictionary:
 	if DriverPerformance.dev_preset > 0:
 		return DriverPerformance.preset(DriverPerformance.dev_preset)
+	if career_race.has("attrs"):
+		return career_race["attrs"]          # Road to Glory: your own driver
 	var id := str(career_race.get("driver", career_race.get("quali", career_race.get("practice", ""))))
 	if id != "" and Career.active():
 		var d := Career.driver(id)

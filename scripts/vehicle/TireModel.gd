@@ -12,6 +12,15 @@ const TEMP_GRIP_LOSS := 0.26     # max grip lost far outside the window
 const TEMP_FALLOFF_SPAN := 38.0
 const WEAR_GRIP_LOSS := 0.36     # grip lost at 0% tread
 const BASE_WEAR_PER_SECOND := 0.0009
+## The tyre budget: how hard accelerating and braking spend the tyres. Squared, so flooring
+## the throttle out of every corner spends far more than feeding it in.
+const LONG_WEAR := 1.6
+## Grip lost on top of normal wear once the budget is nearly gone (below CLIFF tread).
+const CLIFF := 0.1
+const CLIFF_LOSS := 0.18
+## Metres a set lasts at stint_scale 1 when driven flat out (measured by TyreBudgetTest).
+## A race sets stint_scale so flat-out driving spends 90% of the budget by the planned stop.
+const REFERENCE_LIFE_M := 185000.0
 
 var base_grip := 1.45
 var wear_rate := 1.0
@@ -24,6 +33,10 @@ var abuse_scale := 1.0
 ## The driver's tyre care (DriverPerformance.wear_multiplier): wear only, on top of how hard
 ## the tyre is actually worked, so careful hands never erase the cost of sliding.
 var driver_wear := 1.0
+## Race budget scale: set so a set of tyres lasts one planned stint of normal driving.
+var stint_scale := 1.0
+## 0..1+: how much of this axle's grip went into accelerating or braking (set by the physics).
+var long_usage := 0.0
 
 var temperature := START_TEMP
 var wear := 1.0                   # 1.0 = new, 0.0 = destroyed
@@ -64,7 +77,8 @@ func temperature_factor() -> float:
 
 
 func wear_factor() -> float:
-	return 1.0 - WEAR_GRIP_LOSS * pow(1.0 - wear, 1.15)
+	var cliff := CLIFF_LOSS * clampf((CLIFF - wear) / CLIFF, 0.0, 1.0)
+	return 1.0 - WEAR_GRIP_LOSS * pow(1.0 - wear, 1.15) - cliff
 
 
 func grip_coefficient() -> float:
@@ -83,5 +97,7 @@ func update(delta: float, speed: float, surface_grip: float = 1.0) -> void:
 	temperature += (heat - COOLING_RATE * (temperature - AMBIENT_TEMP) * (0.6 + 0.4 * speed_factor)) * delta
 	temperature = clampf(temperature, AMBIENT_TEMP, 160.0)
 	var overheat := clampf((temperature - optimal_temperature - temperature_window) / 20.0, 0.0, 2.0)
-	var wear_speed := BASE_WEAR_PER_SECOND * wear_rate * abuse_scale * driver_wear * (work * work * speed_factor + 4.0 * minf(sliding, 1.3) * surface_grip + 1.0 * overheat * speed_factor)
+	var longitudinal := minf(long_usage, 1.2)
+	var wear_speed := BASE_WEAR_PER_SECOND * wear_rate * abuse_scale * driver_wear * stint_scale * (work * work * speed_factor
+		+ LONG_WEAR * longitudinal * longitudinal * maxf(speed_factor, 0.3) + 4.0 * minf(sliding, 1.3) * surface_grip + 1.0 * overheat * speed_factor)
 	wear = maxf(0.0, wear - wear_speed * delta)

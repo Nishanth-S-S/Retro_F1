@@ -40,6 +40,8 @@ func _run() -> void:
 		await _tracks()
 	if only == "" or only == "race":
 		await _race()
+	if only == "" or only == "glory":
+		await _glory()
 	get_tree().quit()
 
 
@@ -210,3 +212,33 @@ func _race() -> void:
 		await get_tree().process_frame
 	await _shot("w_pit_stop", 1.2)
 	race.queue_free()
+
+
+func _glory() -> void:
+	await _goto("res://scenes/glory/GloryStart.tscn")
+	await _shot("k_glory_create")
+	Glory.new_game("ALEX STONE", 27, {"skin": 1, "hair": 1, "hair_color": 1, "accessory": 7, "outfit": 2, "face": 1}, "speed")
+	var hub := await _goto("res://scenes/glory/GloryHub.tscn")
+	await _shot("k_glory_intro", 0.5)
+	for scene in hub.find_children("*", "StoryScene", true, false):
+		(scene as StoryScene)._next()
+		(scene as StoryScene)._next()
+		(scene as StoryScene)._next()
+	await _shot("k_glory_dialogue", 0.4)
+	for scene in hub.find_children("*", "StoryScene", true, false):
+		scene.queue_free()
+	Glory.state()["story"] = []
+	Glory.quick_sim()
+	Glory.quick_sim()
+	Glory.state()["story"] = []
+	hub = await _goto("res://scenes/glory/GloryHub.tscn")
+	for scene in hub.find_children("*", "StoryScene", true, false):
+		scene.queue_free()
+	hub.call("_build")
+	await _shot("k_glory_hub", 0.5)
+	Glory.queue_scene("academies")
+	hub.call("_play_scenes")
+	for scene in hub.find_children("*", "StoryScene", true, false):
+		for i in 6:
+			(scene as StoryScene)._next()
+	await _shot("k_glory_academies", 0.4)

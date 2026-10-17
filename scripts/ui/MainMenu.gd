@@ -42,8 +42,17 @@ func _ready() -> void:
 	# Careers are the saves: this opens the list to continue one or start another.
 	var career := UIKit.button("CAREER", 28, true)
 	career.custom_minimum_size = Vector2(0, 96)
-	career.pressed.connect(func() -> void: SceneManager.goto("saves"))
+	career.pressed.connect(func() -> void:
+		GameManager.saves_mode = "career"
+		SceneManager.goto("saves"))
 	modes.body.add_child(career)
+	# Road to Glory: build a driver and climb from F3 to Formula One.
+	var glory := UIKit.button("ROAD TO GLORY", 26, true)
+	glory.custom_minimum_size = Vector2(0, 80)
+	glory.pressed.connect(func() -> void:
+		GameManager.saves_mode = "glory"
+		SceneManager.goto("saves"))
+	modes.body.add_child(glory)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 10)
@@ -68,6 +77,7 @@ func _ready() -> void:
 			b.name = "DifficultyButton"
 		_buttons[str(info[0]).substr(2).get_slice(":", 0)] = b
 	_buttons["CAREER"] = career
+	_buttons["ROAD TO GLORY"] = glory
 	# --- crest
 	var right := Frame.make("")
 	right.custom_minimum_size = Vector2(470, 0)
@@ -92,6 +102,7 @@ func _start_tutorial() -> void:
 	CoachMarks.run_once(self, "menu", func() -> Array: return [
 		[null, "Welcome to RETRO F1! Here's a quick tour. Tap anywhere to move on."],
 		[_buttons["CAREER"], "CAREER is the main game: run an F1 team for season after season. Every career is its own save."],
+		[_buttons["ROAD TO GLORY"], "ROAD TO GLORY: build your own driver and fight your way from F3 to a Formula One seat."],
 		[_buttons["FREE DRIVE"], "FREE DRIVE: jump straight in. Test drive, time trial or a 3-lap race on any circuit."],
 		[_buttons["GARAGE"], "The GARAGE is where you build and tune your car. Every change shows up in its ratings."],
 		[_buttons["DIFFICULTY"], "Pick a DIFFICULTY from ROOKIE (lots of help) to LEGEND (none)."],

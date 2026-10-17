@@ -10,6 +10,9 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_results = GameManager.last_results
 	AudioManager.play_music(true)
+	if _results.get("glory", false):
+		SceneManager.goto("glory")
+		return
 	if _results.has("career_report"):
 		RaceReport.show(self, _results["career_report"])
 		return

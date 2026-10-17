@@ -36,7 +36,15 @@ static func build(mode: String, player_timer: LapTimer, position: int, total_car
 		pass
 	# --- career grand prix: the career books the result, free-play rewards do not apply
 	var career_race := not GameManager.career_race.is_empty()
-	if career_race:
+	if career_race and GameManager.career_race.get("glory", false):
+		# Road to Glory books its own races (and the F1 test).
+		if GameManager.career_race.get("test", false):
+			results["glory_report"] = Glory.finish_test(player_timer.best_lap, float(session.get("ideal_lap", 0.0)))
+		else:
+			results["glory_report"] = Glory.finish_drive(position, results["finished"] and not session.get("destroyed", false))
+		GameManager.career_race = {}
+		results["glory"] = true
+	elif career_race:
 		var completed: bool = results["finished"] and not session.get("destroyed", false)
 		var report := Career.finish_drive(position, completed)
 		results["career_report"] = report

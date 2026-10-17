@@ -25,6 +25,7 @@ GameManager="*res://scripts/core/GameManager.gd"
 SceneManager="*res://scripts/core/SceneManager.gd"
 AudioManager="*res://scripts/core/AudioManager.gd"
 Career="*res://scripts/career/Career.gd"
+Glory="*res://scripts/glory/Glory.gd"
 
 [display]
 

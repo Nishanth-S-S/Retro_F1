@@ -2,7 +2,7 @@ class_name DrivingStyle
 extends RefCounted
 ## Reads how the player takes each corner and races the cars around them, and turns it into
 ## five playing styles. Nobody picks a style: a lap of late braking, clean exits or careful
-## energy use simply shows up here. Each corner is split into the four phases:
+## tyre spending simply shows up here. Each corner is split into the four phases:
 ##   APPROACH  where the braking started, against what the car needed
 ##   TURN-IN   braking while steering (lockups, understeer)
 ##   APEX      slowest speed and where on the road it was taken
@@ -14,7 +14,7 @@ const BLURBS := {
 	"LATE BRAKER": "Gains places on the brakes. Watch the lockups and the exits.",
 	"SMOOTH DRIVER": "Clean lines, gentle inputs, tyres that last.",
 	"EXIT SPECIALIST": "Gives up the entry to straighten the exit and pass down the straight.",
-	"RACE TACTICIAN": "Spends energy where it wins places and saves it where it doesn't.",
+	"RACE TACTICIAN": "Spends the tyres where it wins places and saves them where it doesn't.",
 	"DEFENSIVE RACER": "Places the car so faster cars have nowhere to go.",
 }
 ## Metres past the corner's end where exit speed is measured.
@@ -42,9 +42,9 @@ var _passes_braking := 0
 var _passes_exit := 0
 var _held := 0
 var _lost := 0
-var _push_attacking := 0.0
-var _push_alone := 0.0
-var _preserve_time := 0.0
+var _push_attacking := 0.0     # hard on the throttle with a car close ahead
+var _push_alone := 0.0         # hard on the throttle with nobody around
+var _preserve_time := 0.0      # easing the throttle in with nobody around
 var _drive_time := 0.0
 var _slide_time := 0.0
 var _steer_jerk := 0.0
@@ -69,15 +69,17 @@ func update(car: VehicleController, delta: float) -> void:
 		_drive_time += delta
 		_steer_jerk += absf(input.steer - _last_steer)
 		_slide_time += delta * (1.0 if p.front_tire.locked or p.rear_tire.spinning or p.oversteer else 0.0)
-		if p.pace_mode == VehiclePhysics.Pace.PRESERVE:
-			_preserve_time += delta
 	_last_steer = input.steer
 	var battle := _battles(car)
-	if p.deploying:
+	# How the tyre budget is spent: flat out and hard on the tyres, or fed in gently.
+	var hard := moving and input.throttle > 0.9 and maxf(p.front_tire.usage, p.rear_tire.usage) > 0.8
+	if hard:
 		if battle.x > 0.0:
 			_push_attacking += delta
 		else:
 			_push_alone += delta
+	elif moving and battle == Vector2.ZERO and input.throttle > 0.05 and input.throttle < 0.75:
+		_preserve_time += delta
 	_track_corner(car, progress, battle, delta)
 
 
