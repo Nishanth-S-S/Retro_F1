@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS := {
 	"free_weather": 0,
 	# 0 = classic overhead camera, 1 = driver's view (low, close, looking up the road).
 	"camera_mode": 1,
+	"camera_view": 0,
 }
 
 var economy: Dictionary = {}

@@ -138,9 +138,7 @@ func _build_top_right() -> void:
 		box.add_child(garage)
 	var cam := UIKit.button("CAM", 14)
 	cam.custom_minimum_size = Vector2(70, 46)
-	cam.pressed.connect(func() -> void:
-		GameManager.set_setting("camera_mode", 1 - int(GameManager.setting("camera_mode")))
-		GameManager.save())
+	cam.pressed.connect(func() -> void: manager.cycle_view())
 	box.add_child(cam)
 	marks["cam"] = cam
 	var reset := UIKit.button("RESET", 14)
@@ -510,9 +508,8 @@ func _paint_pit_arrow(a: Control) -> void:
 	if manager == null or manager.player == null:
 		return
 	var t := manager.track
-	var canvas := a.get_viewport().get_canvas_transform()
-	var car_screen := canvas * manager.player.global_position
-	var target := canvas * t.position_at(t.pit_start + 10.0, -(t.half_width + TrackData.PIT_WIDTH * 0.55))
+	var car_screen := manager.screen_point(manager.player.global_position)
+	var target := manager.screen_point(t.position_at(t.pit_start + 10.0, -(t.half_width + TrackData.PIT_WIDTH * 0.55)))
 	var dir := (target - car_screen).normalized()
 	if dir == Vector2.ZERO:
 		return

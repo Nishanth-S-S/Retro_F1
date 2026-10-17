@@ -39,6 +39,8 @@ var _ghost: CarVisual
 var _ghost_sample: Dictionary = {}
 
 var _hud: HUDController
+## The 3D view of the race (CHASE / HIGH / COCKPIT); TOP shows the 2D world instead.
+var race3d: Race3D
 var _controls: MobileControls
 var _camera: RaceCamera
 var _line_assist: RacingLineAssist
@@ -168,6 +170,9 @@ func _ready() -> void:
 	if weather > 0:
 		EventBus.driver_message.emit("%s  -  LOW GRIP" % WeatherFX.NAMES[weather], Color("7fd4ff"))
 	_camera.snap_to_target()
+	race3d = Race3D.make(self)
+	add_child(race3d)
+	_apply_settings()
 	positions.update(cars, timers, track.length)
 	# On the grid: how wide this circuit is (6.32 car widths, narrower in a few places).
 	EventBus.driver_message.emit("TRACK %s" % track.width_text(), Color.WHITE)
@@ -347,10 +352,25 @@ func _apply_settings() -> void:
 	_line_assist.visible = bool(GameManager.setting("racing_line"))
 	_camera.rotate_with_car = bool(GameManager.setting("camera_rotation"))
 	_camera.driver_view = int(GameManager.setting("camera_mode")) == 1
-	_hud.set_driver_view(_camera.driver_view)
+	# The 2D cockpit overlay belongs to the top-down view; the 3D views film for themselves.
+	_hud.set_driver_view(_camera.driver_view and (race3d == null or not race3d.active()))
 
 
 # ---------------------------------------------------------------- loop
+
+## Cycles CHASE -> HIGH -> COCKPIT -> TOP.
+func cycle_view() -> void:
+	if race3d:
+		race3d.cycle_view()
+		_apply_settings()
+
+
+## Where a point of the 2D world is on screen in the current view (HUD markers use this).
+func screen_point(world: Vector2) -> Vector2:
+	if race3d and race3d.active():
+		return race3d.to_screen(world)
+	return get_viewport().get_canvas_transform() * world
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
