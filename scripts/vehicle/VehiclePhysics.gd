@@ -11,6 +11,10 @@ extends RefCounted
 ## Frame convention: +x forward, +y to the driver's right, positive yaw = clockwise on screen.
 
 const REFERENCE_MU := 1.5
+## Arcade handling layer (player car, strength set by the difficulty): how hard it steers the
+## yaw rate towards what the steering asks for (1/s), and how fast it bleeds off sideways slip.
+const ARCADE_YAW_GAIN := 6.0
+const ARCADE_SLIP_DAMP := 2.2
 
 var config: VehiclePhysicsConfig
 var stats: CarStats
@@ -31,6 +35,10 @@ var grip_scale := 1.0
 var damage_loss := 0.0
 ## The driver's share of the car (DriverPerformance). null = the full car, as in the garage.
 var driver: DriverPerformance
+## 0..1 arcade handling: snappy turn-in, slides that can be caught and held (0 = pure sim).
+var arcade := 0.0
+## Multiplies how fast the front wheels follow the steering input.
+var steer_rate_scale := 1.0
 var _rear_slide := 0.0
 
 # --- outputs of the latest step (read by controller, HUD, telemetry, debug overlay)
@@ -114,7 +122,7 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 
 	# ---- steering: input requests a front wheel angle; lock shrinks with speed
 	var steer_target := steer_input * c.max_steer_angle(vx)
-	steer_angle = move_toward(steer_angle, steer_target, c.steering_rate * stats.front_response * delta)
+	steer_angle = move_toward(steer_angle, steer_target, c.steering_rate * stats.front_response * steer_rate_scale * delta)
 
 	# ---- drivetrain
 	transmission.update(delta, vx, c.wheel_radius, engine.redline_rpm, throttle_input)
@@ -220,6 +228,16 @@ func step(delta: float, vx: float, vy: float, yaw_rate: float, steer_input: floa
 	var fx := front_body_x + rear_force.x - dir * (aero.drag + rolling) * rest_scale
 	var fy := front_body_y + rear_force.y
 	var yaw_torque := _a * front_body_y - _b * rear_force.y - yaw_rate * c.yaw_damping * (1.0 + c.stability_yaw_gain * stability_assist * slide_r)
+	if arcade > 0.0 and speed > 3.0:
+		# Rotation follows the steering (no more than the tyres can hold): crisp turn-in, and a
+		# slide gets caught by steering into it.
+		var grip_cap := (front_limit + rear_limit) / _mass * 0.95
+		var r_target := clampf(vx * tan(steer_angle) / c.wheelbase, -grip_cap / speed, grip_cap / speed)
+		yaw_torque += (r_target - yaw_rate) * _inertia * ARCADE_YAW_GAIN * arcade
+		# Sideways slip bleeds away for that planted feel - less in a power slide, so a drift
+		# held on the throttle keeps its angle and stays controllable.
+		var hold := 1.0 - 0.65 * clampf(slide_r * throttle_input * 2.0, 0.0, 1.0)
+		fy += -vy * _mass * ARCADE_SLIP_DAMP * arcade * hold * rest_scale
 	_rear_slide = slide_r
 	accel_local = Vector2(fx / _mass, fy / _mass)
 	yaw_accel = yaw_torque / _inertia

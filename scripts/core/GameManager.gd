@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS := {
 	# Difficulty: 0-4 = ROOKIE..LEGEND (see Difficulty.gd); the diff_* values belong to the mode. Default PRO.
 	"difficulty": 2, "diff_ai": 0.67, "diff_aggression": 0.55, "diff_steer_assist": 0.0,
 	"diff_brake_assist": 0.0, "diff_grip": 0.0, "diff_damage": 0.5,
+	"diff_handling": 0.45, "diff_steer_damp": 0.74, "diff_steer_rate": 1.12,
 	# Free-drive weather: 0 = by track, 1 = dry, 2 = light rain, 3 = heavy rain.
 	"free_weather": 0,
 	# 0 = classic overhead camera, 1 = driver's view (low, close, looking up the road).
@@ -160,9 +161,14 @@ func load_profile() -> void:
 		elif loaded.has(key) and (loaded[key] is float or loaded[key] is int) and (defaults[key] is float or defaults[key] is int):
 			profile[key] = loaded[key]
 	var settings: Dictionary = profile["settings"]
+	var had_handling := settings.has("diff_handling")
 	for key: String in DEFAULT_SETTINGS:
 		if not settings.has(key):
 			settings[key] = DEFAULT_SETTINGS[key]
+	if not had_handling and int(settings.get("difficulty", 2)) < Difficulty.PRESETS.size():
+		# Saves from before the arcade handling get their mode's steering values.
+		for key: String in ["diff_handling", "diff_steer_damp", "diff_steer_rate"]:
+			settings[key] = Difficulty.PRESETS[int(settings["difficulty"])][key]
 	profile["money"] = int(profile["money"])
 	profile["research_points"] = int(profile["research_points"])
 	for id: String in defaults["unlocked_parts"]:

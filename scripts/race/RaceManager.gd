@@ -217,8 +217,10 @@ func _spawn_cars() -> void:
 	player_timer.lap_invalidated.connect(func() -> void: EventBus.driver_message.emit("LAP INVALID  ·  TRACK LIMITS", Color("ff5d5d")))
 	# Contact with a car or the wall gives the camera a slight shake.
 	player.collided.connect(func(strength: float) -> void:
-		_camera.add_shake(1.5 + strength * 3.5)
-		_camera.kick(strength * 0.25))
+		# Bigger hits at bigger speeds - still capped so the view never goes wild.
+		var calm := bool(GameManager.setting("reduced_motion"))
+		_camera.add_shake(0.0 if calm else minf(9.0, 1.2 + strength * 3.0 + player.speed * 0.07))
+		_camera.kick(0.0 if calm else strength * (0.2 + player.speed * 0.004)))
 	player.takes_damage = true
 	player.damage_scale = Difficulty.damage_scale()
 	player.wet = weather > 0

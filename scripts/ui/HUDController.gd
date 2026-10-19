@@ -61,6 +61,8 @@ func _ready() -> void:
 	_build_overlays()
 	_build_pause()
 	_root.add_child(FatigueMeter.make(self))
+	_root.add_child(SpeedStreaks.make(self))
+	_root.move_child(_root.get_child(_root.get_child_count() - 1), 0)
 	EventBus.driver_message.connect(show_message)
 	EventBus.settings_changed.connect(_refresh_settings)
 

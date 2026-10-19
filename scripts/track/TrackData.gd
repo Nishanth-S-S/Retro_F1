@@ -28,6 +28,7 @@ var narrow_sections: Array[Vector2] = []     # progress from / to, metres
 ## Road height at every sample (metres, 3D view only - the simulation is flat). Authored
 ## approximations: the atlas has no elevation data. A bridge (Suzuka) lifts one branch.
 var heights := PackedFloat32Array()
+var _gaps := PackedByteArray()
 var bridges: Array[Dictionary] = []          # {"over": progress m, "under": progress m, "height_m"}
 ## Reference layers from the atlas (metres, game frame): P00-P19 stations and Z1-Z8 staging
 ## rectangles. Shown by the track debug overlay; never used for gameplay.
@@ -240,6 +241,28 @@ func _compute_widths(data: Dictionary) -> void:
 			var into := minf(p - (sec.x - NARROW_BLEND), (sec.y + NARROW_BLEND) - p)
 			squeeze = maxf(squeeze, smoothstep(0.0, NARROW_BLEND, into))
 		widths[i] = lerpf(half_width, narrow, squeeze)
+
+
+## True where the barriers stop because the other road crosses (a figure-eight like Suzuka):
+## both roads are open for the width of the other road's barriers, so neither level runs
+## into the walls of the road above or below it.
+func barrier_gap(i: int) -> bool:
+	if _gaps.size() != count:
+		_gaps.resize(count)
+		_gaps.fill(0)
+		var widest := half_width
+		for k in count:
+			widest = maxf(widest, maxf(barrier_left[k], barrier_right[k]))
+		for bridge: Dictionary in bridges:
+			var over := float(bridge["over"])
+			var under := float(bridge["under"])
+			var cross := absf(tangents[index_at(over)].cross(tangents[index_at(under)]))
+			var reach := (widest + 6.0) / maxf(cross, 0.35)
+			for at: float in [over, under]:
+				for k in count:
+					if absf(progress_delta(at, k * spacing)) < reach:
+						_gaps[k] = 1
+	return _gaps[i] == 1
 
 
 func _compute_heights(elev: Dictionary) -> void:

@@ -79,6 +79,10 @@ var _was_enabled := false
 var _teleport_pending := false
 var _teleport_transform := Transform2D()
 var _reverse_timer := 0.0
+## Sparks where the car scrapes a wall or another car at speed.
+var _sparks: CPUParticles2D
+var _scrape_point := Vector2.ZERO
+var _scraping := false
 var _smoke_front: CPUParticles2D
 var _smoke_rear: CPUParticles2D
 var _dust: CPUParticles2D
@@ -150,6 +154,15 @@ func _build_visuals() -> void:
 	visual = CarVisual.new()
 	visual.name = "Visual"
 	add_child(visual)
+	_sparks = _make_particles(Color(1.0, 0.78, 0.3, 1.0), 26)
+	_sparks.lifetime = 0.35
+	_sparks.initial_velocity_min = 40.0
+	_sparks.initial_velocity_max = 110.0
+	_sparks.spread = 70.0
+	_sparks.scale_amount_min = 1.2
+	_sparks.scale_amount_max = 2.4
+	_sparks.scale_amount_curve = null
+	_sparks.z_index = 4
 	_smoke_front = _make_particles(Color(0.92, 0.92, 0.92, 0.5), 18)
 	_smoke_rear = _make_particles(Color(0.92, 0.92, 0.92, 0.5), 22)
 	_dust = _make_particles(Color(0.62, 0.55, 0.4, 0.55), 16)
@@ -216,11 +229,22 @@ func _physics_process(delta: float) -> void:
 	_collision_cooldown = maxf(0.0, _collision_cooldown - delta)
 	if is_player and controls_enabled and not autopilot:
 		input.update_player(delta)
+		_shape_steering()
 	if track:
 		track_index = track.nearest_index(global_position, track_index)
 		_update_track_state()
 	_update_driver(delta)
 	_update_effects(delta)
+
+
+## Speed-scaled steering for the player: tight and quick at hairpin speeds, damped and calmer
+## flat out so a straight never spins you. How much it damps comes from the difficulty - the
+## higher the mode, the more raw and twitchy the steering stays at speed.
+func _shape_steering() -> void:
+	var fast := smoothstep(12.0, 70.0, speed)
+	input.steer *= lerpf(1.0, Difficulty.steer_damping(), fast)
+	physics.steer_rate_scale = Difficulty.steer_rate() * lerpf(1.45, 1.0, smoothstep(4.0, 35.0, speed))
+	physics.arcade = Difficulty.handling_assist()
 
 
 ## Puts a driver in the car. Missing attributes use DriverPerformance.DEFAULT_RATING.
@@ -350,6 +374,10 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		return
 	if setup == null or physics.stats == null:
 		return
+	# Remember where the body touches something, for scrape sparks.
+	_scraping = state.get_contact_count() > 0
+	if _scraping:
+		_scrape_point = state.get_contact_local_position(0)
 	var steer := input.steer if controls_enabled else 0.0
 	var throttle := input.throttle if controls_enabled else 0.0
 	var brake := input.brake if controls_enabled else 1.0
@@ -502,7 +530,14 @@ func _update_effects(_delta: float) -> void:
 	_smoke_front.position = Vector2(front_x, 0)
 	_smoke_rear.position = Vector2(rear_x, 0)
 	_dust.position = Vector2(rear_x, 0)
-	_smoke_front.emitting = front_slide > threshold + 0.25 and surface_front < VehiclePhysicsConfig.Surface.GRASS
+	# Hard braking smokes the fronts even before a full lock-up.
+	var stamping := input.brake > 0.8 and speed > 28.0
+	_smoke_front.emitting = (front_slide > threshold + 0.25 or stamping or front.locked) and surface_front < VehiclePhysicsConfig.Surface.GRASS
+	# Sparks: scraping a wall or a rival at speed, or the plank touching a kerb flat out.
+	var bottoming := on_curb and speed > 62.0
+	_sparks.emitting = (_scraping and speed > 7.0) or bottoming
+	if _sparks.emitting:
+		_sparks.global_position = _scrape_point if _scraping else to_global(Vector2(0, 0))
 	_smoke_rear.emitting = rear_slide > threshold + 0.25 and not rough
 	_dust.emitting = rough and speed > 5.0
 	_spray.position = Vector2(rear_x, 0)

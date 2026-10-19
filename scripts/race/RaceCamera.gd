@@ -90,7 +90,8 @@ func _process(delta: float) -> void:
 	var goal := target.global_position + _look
 	global_position = global_position.lerp(goal, minf(1.0, follow_rate * delta))
 	var t := clampf(target.speed / zoom_speed_range, 0.0, 1.0)
-	var want_zoom := lerpf(zoom_slow, zoom_fast, smoothstep(0.0, 1.0, t))
+	# Pull back as the speed builds: more track ahead and a stronger sense of pace.
+	var want_zoom := lerpf(zoom_slow, zoom_fast * 0.86, smoothstep(0.0, 1.0, t))
 	var z := lerpf(zoom.x, want_zoom, minf(1.0, 1.8 * delta))
 	zoom = Vector2(z, z)
 	if rotate_with_car:
@@ -100,6 +101,9 @@ func _process(delta: float) -> void:
 		_base_rotation = lerp_angle(_base_rotation, 0.0, minf(1.0, 6.0 * delta))
 	if target.on_curb and target.speed > 8.0:
 		_shake = maxf(_shake, 1.6)
+	# A faint rumble flat out (never with reduced motion).
+	if target.speed > 62.0 and not bool(GameManager.setting("reduced_motion")):
+		_shake = maxf(_shake, (target.speed - 62.0) * 0.035)
 	if target.surface_rear >= VehiclePhysicsConfig.Surface.GRASS and target.speed > 8.0:
 		_shake = maxf(_shake, 2.4)
 	_shake = maxf(0.0, _shake - 22.0 * delta)

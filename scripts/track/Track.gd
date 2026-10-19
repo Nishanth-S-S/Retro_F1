@@ -132,6 +132,8 @@ func _build_mesh() -> void:
 	# Barriers.
 	for i in n:
 		var j := data.wrap_index(i + 1)
+		if data.barrier_gap(i):
+			continue
 		var color := COLOR_BARRIER_A if (i / 2) % 2 == 0 else COLOR_BARRIER_B
 		if _scenery.theme.get("walls", false):
 			# Street circuit: bare concrete walls.
@@ -258,6 +260,13 @@ func _build_scenery() -> void:
 		var offset := (data.barrier_left[j] if side < 0.0 else data.barrier_right[j]) + 16.0
 		var pos := _edge(j, side * offset)
 		var ang := data.tangents[j].angle()
+		# Never across another part of the circuit (tight street layouts double back close by).
+		var clear := true
+		for k: float in [-34.0, -17.0, 0.0, 17.0, 34.0]:
+			var probe := (pos + Vector2.RIGHT.rotated(ang) * k * PPM) / PPM
+			clear = clear and data.distance_to_road_m(probe, 40.0) > 9.0
+		if not clear:
+			continue
 		_rect(pos + Vector2(4, 5), Vector2(34, 7.5) * PPM, ang, Color(0, 0, 0, 0.22))
 		_rect(pos, Vector2(34, 7.5) * PPM, ang, Color("58616e"))
 		stand_positions.append(pos)
@@ -269,6 +278,17 @@ func _build_scenery() -> void:
 			for row in 5:
 				_rect(pos + data.normals[j] * (row - 2) * 2.6 * PPM, Vector2(33, 0.8) * PPM, ang, [Color("d95050"), Color("e8e8e8"), Color("3a78c2"), Color("e8e8e8"), Color("f5c542")][row])
 	_floodlights()
+	# This circuit's identity pieces (banking, towers, stadiums, bridges, tunnel...), placed
+	# before buildings and trees so those flow around them.
+	var marks := Landmarks2D.new(data, _st, _scenery)
+	marks.build()
+	lamp_positions.append_array(marks.lamps)
+	if marks.overlay_used:
+		var over := MeshInstance2D.new()
+		over.name = "OverCars"
+		over.mesh = marks.overlay.commit()
+		over.z_index = 5                 # bridges, tunnel roof, canopies pass over the cars
+		add_child(over)
 	_scenery.details()
 	# Buildings, vegetation, rocks, boats and landmarks for this location.
 	_scenery.objects()
@@ -308,6 +328,8 @@ func _build_barriers() -> void:
 	var n := data.count
 	for i in n:
 		var j := data.wrap_index(i + 1)
+		if data.barrier_gap(i):
+			continue
 		for depth: float in [0.0, BARRIER_THICKNESS]:
 			segments.append(_edge(i, -data.barrier_left[i] - depth))
 			segments.append(_edge(i + 1, -data.barrier_left[j] - depth))

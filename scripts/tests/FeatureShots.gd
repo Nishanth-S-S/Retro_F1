@@ -161,7 +161,8 @@ func _ui() -> void:
 
 ## Whole-lap overview of each circuit so the scenery can be judged at a glance.
 func _tracks() -> void:
-	for id: String in GameManager.TRACKS:
+	var picked := OS.get_cmdline_user_args().slice(2)
+	for id: String in (picked if not picked.is_empty() else Array(GameManager.TRACKS)):
 		GameManager.track_id = id
 		GameManager.career_race = {}
 		var world := Node2D.new()
@@ -200,6 +201,16 @@ func _race() -> void:
 	await _shot("u_grid", 0.6)
 	await _shot("v_race_wet", 9.0)
 	print("fps with %d cars: %d" % [race.cars.size(), Engine.get_frames_per_second()])
+	# Flat out on the main straight: speed streaks and the vignette.
+	var fast_at := race.track.length - 520.0
+	var fast_heading := race.track.heading_at(fast_at)
+	race.player.takes_damage = false
+	race.player.place(race.track.position_at(fast_at), fast_heading)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	race.player.linear_velocity = Vector2.from_angle(fast_heading) * 80.0 * VehicleController.PPM
+	await _shot("v_flat_out", 0.4)
+	race.player.takes_damage = true
 	# A narrow section of the track (4.6 car widths instead of 6.32).
 	if not race.track.narrow_sections.is_empty():
 		var mid := (race.track.narrow_sections[0].x + race.track.narrow_sections[0].y) * 0.5
