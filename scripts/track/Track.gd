@@ -18,7 +18,7 @@ const COLOR_TREE := Color("275c2c")
 const COLOR_TREE_LIGHT := Color("347a39")
 const BARRIER_THICKNESS := 1.3
 
-@export_file("*.json") var track_file := "res://data/tracks/falcon_ridge.json"
+@export_file("*.json") var track_file := "res://data/tracks/monza.json"
 
 var data: TrackData
 ## Where the grandstands and the floodlights are (pixels): crowd noise and night lighting.

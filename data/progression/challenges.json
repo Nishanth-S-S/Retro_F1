@@ -1,5 +1,5 @@
 [
-  {"id": "top_speed", "title": "TOP SPEED", "description": "Reach 270 km/h anywhere on Falcon Ridge.", "type": "max_speed", "target": 270.0, "money": 2000, "research": 15},
+  {"id": "top_speed", "title": "TOP SPEED", "description": "Reach 270 km/h anywhere on any circuit.", "type": "max_speed", "target": 270.0, "money": 2000, "research": 15},
   {"id": "cornering", "title": "CORNERING", "description": "Complete Sector 2 in under 29.0 s on a valid lap.", "type": "sector_time", "sector": 1, "target": 29.0, "money": 2000, "research": 15},
   {"id": "balanced_racer", "title": "BALANCED RACER", "description": "Win the 5-lap race.", "type": "race_win", "target": 1, "money": 3000, "research": 25}
 ]

@@ -191,10 +191,12 @@ func _ready() -> void:
 	Engine.physics_ticks_per_second = 600
 	Engine.max_physics_steps_per_frame = 64
 	Career.end_career()
-	for id: String in GameManager.TRACKS:
+	# A representative sample of the 50 (TrackImportTest checks every circuit's geometry):
+	# fast, street, forest, figure-eight, desert and a local-only import.
+	for id: String in ["monza", "monaco", "spa", "suzuka", "bahrain", "brands_hatch"]:
 		GameManager.track_id = id
 		GameManager.session_mode = GameManager.MODE_TEST
-		GameManager.session_weather = 2 if id == "nordhaven" else 0
+		GameManager.session_weather = 2 if id == "spa" else 0
 		var race := (load("res://scenes/Race.tscn") as PackedScene).instantiate() as RaceManager
 		add_child(race)
 		# Nobody steers: full steering and braking help must get the car round on their own.

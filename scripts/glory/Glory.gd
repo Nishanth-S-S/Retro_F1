@@ -27,8 +27,16 @@ const JUNIOR_TEAMS := [
 	["rodan", "Rodan Motorsport", "ROD", "#111111", "#c8a24a", 79], ["damz", "DAMZ", "DMZ", "#2a7de1", "#f4f6f2", 79],
 	["amersfort", "Van Amersfort", "VAN", "#e94f8a", "#1b1b1b", 77], ["aixa", "AIXA Racing", "AIX", "#5a2c8c", "#f4f6f2", 76],
 ]
-const JUNIOR_TRACKS: PackedStringArray = ["monza", "spielberg", "silverstone", "spa", "port_azure", "interlagos"]
-const JUNIOR_ROUND_NAMES: PackedStringArray = ["ITALY", "AUSTRIA", "BRITAIN", "BELGIUM", "PORT AZURE", "SEASON FINALE"]
+## Real F1 support-race venues. F3 opens at Monza (the story starts there); the F2 season
+## ends in Abu Dhabi.
+const JUNIOR_TRACKS := {
+	"F3": ["monza", "spielberg", "silverstone", "hungaroring", "spa", "barcelona"],
+	"F2": ["bahrain", "jeddah", "monaco", "silverstone", "monza", "yas_marina"],
+}
+const JUNIOR_ROUND_NAMES := {
+	"F3": ["ITALY", "AUSTRIA", "BRITAIN", "HUNGARY", "BELGIUM", "SPAIN"],
+	"F2": ["BAHRAIN", "SAUDI ARABIA", "MONACO", "BRITAIN", "ITALY", "ABU DHABI FINALE"],
+}
 const POINTS: PackedInt32Array = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 ## The talent you start with: which stats your driver is born with an edge in.
 const TALENTS := {
@@ -218,14 +226,16 @@ func round_track(index: int = -1) -> String:
 	var r := int(state()["round"]) if index < 0 else index
 	if in_f1():
 		return str(Career.calendar[r % Career.calendar.size()]["track"])
-	return JUNIOR_TRACKS[r % JUNIOR_TRACKS.size()]
+	var list: Array = JUNIOR_TRACKS.get(state()["series"], JUNIOR_TRACKS["F3"])
+	return list[r % list.size()]
 
 
 func round_name(index: int = -1) -> String:
 	var r := int(state()["round"]) if index < 0 else index
 	if in_f1():
 		return str(Career.calendar[r % Career.calendar.size()]["name"]).to_upper()
-	return "%s  %s" % [state()["series"], JUNIOR_ROUND_NAMES[r % JUNIOR_ROUND_NAMES.size()]]
+	var names: Array = JUNIOR_ROUND_NAMES.get(state()["series"], JUNIOR_ROUND_NAMES["F3"])
+	return "%s  %s" % [state()["series"], names[r % names.size()]]
 
 
 func rounds() -> int:

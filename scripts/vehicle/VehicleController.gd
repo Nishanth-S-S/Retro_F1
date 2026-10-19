@@ -16,7 +16,7 @@ const REVERSE_HOLD_TIME := 0.35
 const DAMAGE_THRESHOLD := 1.6
 const DAMAGE_PER_MS := 1.9
 ## Percent of the tank burned per metre at full throttle with a 100 %-efficiency engine
-## (about six laps of Falcon Ridge). Thirsty engines will need a stop in a five-lap race.
+## (about four laps of Monza). Thirsty engines will need a stop in a five-lap race.
 const FUEL_PER_METRE := 0.0061
 ## Damage from wear and tear (percent per metre): vibration, kerbs and debris add up so a
 ## full race needs a stop or two. Kerbs and running off the track wear the car faster.

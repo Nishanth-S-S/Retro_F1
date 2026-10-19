@@ -4,7 +4,7 @@ extends Node
 
 func _ready() -> void:
 	var args0 := OS.get_cmdline_user_args()
-	var t := TrackData.load_track("res://data/tracks/%s.json" % (args0[0] if args0.size() > 0 else "falcon_ridge"))
+	var t := TrackData.load_track("res://data/tracks/%s.json" % (args0[0] if args0.size() > 0 else "monza"))
 	print("length %.0f m, samples %d, spacing %.2f" % [t.length, t.count, t.spacing])
 	var min_r := INF
 	for k in t.curvature:

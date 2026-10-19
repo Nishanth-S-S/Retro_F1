@@ -8,11 +8,12 @@ const MODE_RACE := "race"
 const MODE_LABELS := {"test": "TEST DRIVE", "time_trial": "TIME TRIAL", "race": "3 LAP RACE"}
 const RACE_LAPS := 3
 const SPRINT_LAPS := 2
-## The first five are real Grand Prix circuits (layouts from the f1-circuits dataset), the rest are fictional.
-const TRACKS: PackedStringArray = ["monza", "silverstone", "spa", "interlagos", "spielberg", "falcon_ridge", "tempo_park", "port_azure", "silver_lake", "nordhaven", "apex_lab"]
-const TRACK_NAMES := {"monza": "MONZA", "silverstone": "SILVERSTONE", "spa": "SPA", "interlagos": "INTERLAGOS", "spielberg": "RED BULL RING",
-	"falcon_ridge": "FALCON RIDGE", "tempo_park": "TEMPO PARK", "port_azure": "PORT AZURE", "silver_lake": "SILVER LAKE", "nordhaven": "NORDHAVEN",
-	"apex_lab": "APEX LAB"}
+## The 50 circuits of the F1 Track Environment Atlas (data/tracks/index.json, written by
+## tools/atlas_import.py). Only these are in the game; apex_lab is a test track and not listed.
+var TRACKS: PackedStringArray = []
+var TRACK_NAMES := {}
+## index.json rows by id: name, family, type ("HIGH SPEED", ...), length, night, status.
+var track_index := {}
 
 const DEFAULT_SETTINGS := {
 	"master_volume": 0.8, "music_volume": 0.5, "effects_volume": 0.8,
@@ -28,12 +29,8 @@ const DEFAULT_SETTINGS := {
 	"free_weather": 0,
 	# 0 = classic overhead camera, 1 = driver's view (low, close, looking up the road).
 	"camera_mode": 1,
-	"camera_view": 0,
-	# Cockpit camera: vertical FOV 55-75 deg (0..1), a thinner see-through halo, calmer motion,
-	# and per-car calibration saved from the F6 panel.
-	"cockpit_fov": 0.35, "reduced_halo": false, "reduced_motion": false, "cockpit_cal": {},
-	# 3D presentation: 0 LOW, 1 MEDIUM, 2 HIGH; retro effects 0 OFF, 1 SUBTLE, 2 STRONG.
-	"graphics": 2, "retro_fx": 0,
+	# Calmer camera: no speed shake or zoom pulses.
+	"reduced_motion": false,
 }
 
 var economy: Dictionary = {}
@@ -43,7 +40,7 @@ var profile: Dictionary = {}
 var setup: CarSetup
 var session_mode := MODE_TEST
 ## Circuit used by the next on-track session.
-var track_id := "falcon_ridge"
+var track_id := "monza"
 var last_results: Dictionary = {}
 ## The player's driving style from the latest session (DrivingStyle.summary()).
 var last_style: Dictionary = {}
@@ -61,7 +58,26 @@ var race_laps := RACE_LAPS
 var mandatory_stop := true
 
 
+func _load_tracks() -> void:
+	var rows: Variant = SaveManager.load_json("res://data/tracks/index.json")
+	TRACKS = PackedStringArray()
+	TRACK_NAMES = {}
+	track_index = {}
+	if rows is Array:
+		for row: Dictionary in rows:
+			TRACKS.append(str(row["id"]))
+			TRACK_NAMES[row["id"]] = str(row["name"]).to_upper()
+			track_index[row["id"]] = row
+	TRACK_NAMES["apex_lab"] = "APEX LAB"
+
+
+## Race character of a circuit: HIGH SPEED, FAST SWEEPS, TECHNICAL, STREET or FOREST ROAD.
+func track_type(id: String) -> String:
+	return str(track_index.get(id, {}).get("type", ""))
+
+
 func _ready() -> void:
+	_load_tracks()
 	_register_input_actions()
 	var eco: Variant = SaveManager.load_json("res://data/progression/economy.json")
 	economy = eco if eco is Dictionary else {}
@@ -152,9 +168,9 @@ func load_profile() -> void:
 	for id: String in defaults["unlocked_parts"]:
 		if not profile["unlocked_parts"].has(id):
 			profile["unlocked_parts"].append(id)
-	# Older saves kept one set of records; they belong to Falcon Ridge.
+	# Older saves kept one set of records; they belong to the default circuit.
 	if (profile["records"] as Dictionary).is_empty() and float(profile["best_lap"]) > 0.0:
-		profile["records"]["falcon_ridge"] = {"best_lap": profile["best_lap"], "best_sectors": profile["best_sectors"], "best_lap_trace": profile["best_lap_trace"], "best_lap_corners": profile["best_lap_corners"], "ghost_data": profile["ghost_data"]}
+		profile["records"]["monza"] = {"best_lap": profile["best_lap"], "best_sectors": profile["best_sectors"], "best_lap_trace": profile["best_lap_trace"], "best_lap_corners": profile["best_lap_corners"], "ghost_data": profile["ghost_data"]}
 	if not loaded.is_empty() and not loaded.has("camera_default_applied"):
 		settings["camera_rotation"] = true          # rotating camera became the default
 	# Parts this save designed (engines your engineers built) join the part list.
@@ -350,7 +366,8 @@ func is_challenge_done(id: String) -> bool:
 func start_free_session(mode: String) -> void:
 	active_mission = -1
 	career_race = {}
-	session_night = false
+	# Night circuits (Bahrain, Marina Bay, Yas Marina, Jeddah, Lusail, Las Vegas) race at night.
+	session_night = bool(track_index.get(track_id, {}).get("night", false))
 	race_laps = RACE_LAPS
 	mandatory_stop = true
 	var choice := int(setting("free_weather"))

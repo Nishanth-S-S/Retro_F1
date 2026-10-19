@@ -27,8 +27,8 @@ const ENGINEER_SPECS := {
 	"data": {"name": "DATA ANALYST", "short": "DATA", "note": "More research points every week."},
 	"strategy": {"name": "STRATEGIST", "short": "STRATEGY", "note": "Faster pit stops in simulated races."},
 }
-const TRACK_TYPES := {"monza": "HIGH SPEED", "silverstone": "FAST SWEEPS", "spa": "FOREST ROAD", "interlagos": "TECHNICAL", "spielberg": "HIGH SPEED",
-	"falcon_ridge": "TECHNICAL", "tempo_park": "HIGH SPEED", "port_azure": "STREET", "silver_lake": "FAST SWEEPS", "nordhaven": "FOREST ROAD"}
+## Kinds of circuit a driver can love or hate (each track's "type" in its data file).
+const TRACK_KINDS: PackedStringArray = ["HIGH SPEED", "FAST SWEEPS", "TECHNICAL", "STREET", "FOREST ROAD"]
 ## Seconds per lap a driver gains at home, on a favourite kind of track, or loses on a bogey one.
 const HOME_GAIN := 0.25
 const TYPE_GAIN := 0.15
@@ -754,7 +754,7 @@ func next_round() -> Dictionary:
 
 
 func round_track() -> String:
-	return str(next_round().get("track", "falcon_ridge"))
+	return str(next_round().get("track", "monza"))
 
 
 ## Points for a round: sprints pay the top eight 8-1, the finale pays double.
@@ -1680,7 +1680,7 @@ func _ensure_traits(d: Dictionary) -> void:
 	# The Apex Lab test track is nobody's home race.
 	var ids := Array(GameManager.TRACKS).filter(func(t: String) -> bool: return t != "apex_lab")
 	d["home"] = ids[rng.randi() % ids.size()]
-	var types: Array = TRACK_TYPES.values()
+	var types: Array = Array(TRACK_KINDS)
 	d["strong"] = types[rng.randi() % types.size()]
 	d["weak"] = types[(types.find(d["strong"]) + 1 + rng.randi() % (types.size() - 1)) % types.size()]
 	d["likes_balance"] = rng.randi_range(-1, 1)
@@ -1692,7 +1692,7 @@ func track_form(d: Dictionary, track_id: String) -> float:
 	var form := 0.0
 	if str(d.get("home", "")) == track_id:
 		form += HOME_GAIN
-	var kind := str(TRACK_TYPES.get(track_id, ""))
+	var kind := GameManager.track_type(track_id)
 	if str(d.get("strong", "")) == kind:
 		form += TYPE_GAIN
 	elif str(d.get("weak", "")) == kind:
@@ -1713,7 +1713,7 @@ func weather_label(d: Dictionary) -> String:
 func form_note(d: Dictionary, track_id: String) -> String:
 	if str(d.get("home", "")) == track_id:
 		return "HOME RACE"
-	var kind := str(TRACK_TYPES.get(track_id, ""))
+	var kind := GameManager.track_type(track_id)
 	if str(d.get("strong", "")) == kind:
 		return "LOVES %s TRACKS" % kind
 	if str(d.get("weak", "")) == kind:

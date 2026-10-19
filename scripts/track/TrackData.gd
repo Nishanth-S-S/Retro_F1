@@ -25,6 +25,17 @@ var display_name := ""
 var half_width := CAR_WIDTH * WIDTH_RATIO * 0.5
 var widths := PackedFloat32Array()
 var narrow_sections: Array[Vector2] = []     # progress from / to, metres
+## Road height at every sample (metres, 3D view only - the simulation is flat). Authored
+## approximations: the atlas has no elevation data. A bridge (Suzuka) lifts one branch.
+var heights := PackedFloat32Array()
+var bridges: Array[Dictionary] = []          # {"over": progress m, "under": progress m, "height_m"}
+## Reference layers from the atlas (metres, game frame): P00-P19 stations and Z1-Z8 staging
+## rectangles. Shown by the track debug overlay; never used for gameplay.
+var stations: Array = []
+var zones: Array = []
+var landmarks: Array = []
+var night := false
+var family := ""
 var curb_width := 1.6
 var runoff := 13.0
 var curve := Curve2D.new()           # centreline in pixels (shown through a Path2D)
@@ -57,6 +68,11 @@ static func load_track(path: String) -> TrackData:
 	var data: Variant = SaveManager.load_json(path)
 	var track := TrackData.new()
 	if data is Dictionary:
+		# Hand edits live beside the generated file and win over it.
+		var override_path := path.get_base_dir() + "/overrides/" + path.get_file()
+		var override: Variant = SaveManager.load_json(override_path) if FileAccess.file_exists(override_path) else null
+		if override is Dictionary:
+			data = TrackTheme.merge(data, override)
 		track._build(data)
 	return track
 
@@ -81,6 +97,12 @@ func _build(data: Dictionary) -> void:
 	_find_corners()
 	_compute_widths(data)
 	_classify()
+	_compute_heights(data.get("elevation", {}))
+	stations = data.get("stations", [])
+	zones = data.get("zones", [])
+	landmarks = data.get("landmarks", [])
+	night = bool(data.get("night", false))
+	family = str(data.get("family", ""))
 	var fractions: Array = data.get("sector_fractions", [0.333, 0.666])
 	sector_bounds = PackedFloat32Array([float(fractions[0]) * length, float(fractions[1]) * length])
 	var gates := int(data.get("checkpoint_count", 12))
@@ -218,6 +240,116 @@ func _compute_widths(data: Dictionary) -> void:
 			var into := minf(p - (sec.x - NARROW_BLEND), (sec.y + NARROW_BLEND) - p)
 			squeeze = maxf(squeeze, smoothstep(0.0, NARROW_BLEND, into))
 		widths[i] = lerpf(half_width, narrow, squeeze)
+
+
+func _compute_heights(elev: Dictionary) -> void:
+	heights.resize(count)
+	heights.fill(0.0)
+	bridges.clear()
+	var keys: Array = elev.get("points", [])
+	if keys.size() >= 2:
+		for i in count:
+			var f := float(i) / count
+			var k := 0
+			while k < keys.size() - 1 and float(keys[k + 1][0]) <= f:
+				k += 1
+			var a: Array = keys[k]
+			var b: Array = keys[(k + 1) % keys.size()]
+			var fa := float(a[0])
+			var fb := float(b[0]) if k + 1 < keys.size() else 1.0 + float(keys[0][0])
+			var t := clampf((f - fa) / maxf(fb - fa, 0.0001), 0.0, 1.0)
+			heights[i] = lerpf(float(a[1]), float(b[1]), (1.0 - cos(t * PI)) * 0.5)
+	for bridge: Dictionary in elev.get("bridges", []):
+		var over := float(bridge["over"]) * length
+		var under := float(bridge["under"]) * length
+		var lift := float(bridge.get("height_m", 8.0))
+		bridges.append({"over": over, "under": under, "height_m": lift})
+		# The upper branch climbs onto the bridge; the lower one keeps its own height under it.
+		var base := heights[index_at(under)]
+		for i in count:
+			var d := absf(progress_delta(over, i * spacing))
+			var w := 1.0 - smoothstep(60.0, 320.0, d)
+			if w > 0.0:
+				heights[i] = lerpf(heights[i], base + lift, w)
+
+
+# ---------------------------------------------------------------- spatial queries
+
+const BIN := 40.0                    # metres per spatial-hash cell
+var _bins := {}
+
+
+## Coarse spatial hash of the centreline samples (built on first use). Scenery placement and
+## terrain use it for fast "how far is the road" queries; gameplay never does.
+func _ensure_bins() -> void:
+	if not _bins.is_empty():
+		return
+	for i in count:
+		var p := points[i] / PPM
+		var key := Vector2i(int(floor(p.x / BIN)), int(floor(p.y / BIN)))
+		# Packed arrays are values: take the list out, add to it, put it back.
+		var list: PackedInt32Array = _bins.get(key, PackedInt32Array())
+		list.append(i)
+		_bins[key] = list
+
+
+## Nearest sample to a point in metres, searching cells out to `reach` metres: [index, distance].
+## Returns [-1, INF] if nothing is that close.
+func nearest_sample_m(p: Vector2, reach: float = 120.0) -> Array:
+	_ensure_bins()
+	var best := -1
+	var best_d := INF
+	var max_ring := int(ceil(reach / BIN))
+	var c := Vector2i(int(floor(p.x / BIN)), int(floor(p.y / BIN)))
+	# Search ring by ring outward; stop once no unsearched cell can hold anything closer.
+	for r in max_ring + 1:
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var list: Variant = _bins.get(c + Vector2i(dx, dy))
+				if list == null:
+					continue
+				for i: int in list:
+					var d := p.distance_to(points[i] / PPM)
+					if d < best_d:
+						best_d = d
+						best = i
+		if best >= 0 and best_d <= r * BIN:
+			break
+	if best_d > reach:
+		return [-1, INF]
+	return [best, best_d]
+
+
+## Every sample within `radius` metres of a point (bridges: both levels are found).
+func samples_near_m(p: Vector2, radius: float) -> PackedInt32Array:
+	_ensure_bins()
+	var out := PackedInt32Array()
+	var r := int(ceil(radius / BIN))
+	var c := Vector2i(int(floor(p.x / BIN)), int(floor(p.y / BIN)))
+	for dx in range(-r, r + 1):
+		for dy in range(-r, r + 1):
+			var list: Variant = _bins.get(c + Vector2i(dx, dy))
+			if list == null:
+				continue
+			for i: int in list:
+				if p.distance_to(points[i] / PPM) <= radius:
+					out.append(i)
+	return out
+
+
+## Distance from a point (metres) to the road edge: negative on the road.
+func distance_to_road_m(p: Vector2, reach: float = 160.0) -> float:
+	var hit := nearest_sample_m(p, reach)
+	if int(hit[0]) < 0:
+		return INF
+	return float(hit[1]) - half_width_at(int(hit[0]))
+
+
+## Road height at a sample (metres; 0 when the circuit is flat).
+func height_at(index: int) -> float:
+	return heights[posmod(index, count)] if heights.size() == count else 0.0
 
 
 ## Half width of the track at sample `index` (metres).

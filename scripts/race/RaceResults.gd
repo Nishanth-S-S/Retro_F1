@@ -62,14 +62,16 @@ static func build(mode: String, player_timer: LapTimer, position: int, total_car
 		money += int(money_table[idx])
 		research += int(research_table[idx])
 		lines.append("Race result P%d  +$%d" % [position, int(money_table[idx])])
-	elif mode == GameManager.MODE_TIME_TRIAL and player_timer.best_lap > 0.0 and GameManager.track_id == "falcon_ridge":
+	elif mode == GameManager.MODE_TIME_TRIAL and player_timer.best_lap > 0.0:
+		# Targets are set for a 3.8 km lap and scale with the circuit's length; one claim each.
+		var lap_scale := track.length / 3786.0
 		for target: Dictionary in eco.get("time_trial_targets", []):
 			var name: String = target["name"]
-			if player_timer.best_lap <= float(target["time"]) and not profile["claimed_targets"].has(name):
+			if player_timer.best_lap <= float(target["time"]) * lap_scale and not profile["claimed_targets"].has(name):
 				profile["claimed_targets"].append(name)
 				money += int(target["money"])
 				research += int(target["research"])
-				lines.append("%s target beaten (%s)  +$%d" % [name, LapTimer.format_time(float(target["time"])), int(target["money"])])
+				lines.append("%s target beaten (%s)  +$%d" % [name, LapTimer.format_time(float(target["time"]) * lap_scale), int(target["money"])])
 	# --- engineering challenges (any mode)
 	for challenge: Dictionary in GameManager.challenges:
 		var id: String = challenge["id"]
@@ -81,7 +83,7 @@ static func build(mode: String, player_timer: LapTimer, position: int, total_car
 				done = rec.max_speed * 3.6 >= float(challenge["target"])
 			"sector_time":
 				var sector := int(challenge["sector"])
-				done = GameManager.track_id == "falcon_ridge" and player_timer.best_sectors[sector] > 0.0 and player_timer.best_sectors[sector] <= float(challenge["target"])
+				done = GameManager.track_id == "monza" and player_timer.best_sectors[sector] > 0.0 and player_timer.best_sectors[sector] <= float(challenge["target"])
 			"race_win":
 				done = mode == GameManager.MODE_RACE and results["finished"] and position == 1
 		if done:

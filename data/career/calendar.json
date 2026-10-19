@@ -1,21 +1,50 @@
 [
  {
-  "name": "Italian GP",
-  "track": "monza",
+  "name": "Australian GP",
+  "track": "albert_park",
   "format": "gp",
-  "rain": 0.12,
-  "wear": 0.9,
+  "rain": 0.15,
+  "wear": 1.0,
+  "safety_car": 0.1,
+  "laps": 20
+ },
+ {
+  "name": "Bahrain Night Race",
+  "track": "bahrain",
+  "format": "gp",
+  "night": true,
+  "rain": 0.02,
+  "wear": 1.2,
   "safety_car": 0.05,
   "laps": 20
  },
  {
-  "name": "Falcon Ridge Sprint",
-  "track": "falcon_ridge",
+  "name": "Japanese GP",
+  "track": "suzuka",
+  "format": "gp",
+  "rain": 0.35,
+  "wear": 1.1,
+  "safety_car": 0.06,
+  "laps": 20
+ },
+ {
+  "name": "Miami Sprint",
+  "track": "miami",
   "format": "sprint",
-  "rain": 0.1,
+  "rain": 0.25,
   "wear": 1.0,
-  "safety_car": 0.05,
+  "safety_car": 0.1,
   "laps": 8
+ },
+ {
+  "name": "Monaco GP",
+  "track": "monaco",
+  "format": "gp",
+  "street": true,
+  "rain": 0.15,
+  "wear": 0.8,
+  "safety_car": 0.2,
+  "laps": 20
  },
  {
   "name": "British GP",
@@ -27,68 +56,41 @@
   "laps": 20
  },
  {
-  "name": "Port Azure Night Race",
-  "track": "port_azure",
-  "format": "gp",
-  "street": true,
-  "night": true,
-  "rain": 0.15,
-  "wear": 1.0,
-  "safety_car": 0.14,
-  "laps": 20
- },
- {
-  "name": "Belgian GP",
+  "name": "Belgian Sprint",
   "track": "spa",
-  "format": "gp",
+  "format": "sprint",
   "rain": 0.55,
   "wear": 1.0,
   "safety_car": 0.08,
-  "laps": 20
- },
- {
-  "name": "Tempo Park Sprint",
-  "track": "tempo_park",
-  "format": "sprint",
-  "rain": 0.1,
-  "wear": 0.9,
-  "safety_car": 0.04,
   "laps": 8
  },
  {
-  "name": "Austrian Sprint",
-  "track": "spielberg",
-  "format": "sprint",
-  "rain": 0.3,
-  "wear": 1.0,
-  "safety_car": 0.06,
-  "laps": 8
- },
- {
-  "name": "Silver Lake GP",
-  "track": "silver_lake",
+  "name": "Italian GP",
+  "track": "monza",
   "format": "gp",
-  "rain": 0.3,
-  "wear": 1.1,
+  "rain": 0.12,
+  "wear": 0.9,
   "safety_car": 0.05,
   "laps": 20
  },
  {
-  "name": "Sao Paulo GP",
-  "track": "interlagos",
+  "name": "Singapore Night Race",
+  "track": "marina_bay",
   "format": "gp",
-  "rain": 0.35,
+  "street": true,
+  "night": true,
+  "rain": 0.3,
   "wear": 1.0,
-  "safety_car": 0.1,
+  "safety_car": 0.2,
   "laps": 20
  },
  {
-  "name": "Nordhaven Finale",
-  "track": "nordhaven",
+  "name": "Abu Dhabi Finale",
+  "track": "yas_marina",
   "format": "gp",
   "double": true,
   "night": true,
-  "rain": 0.45,
+  "rain": 0.02,
   "wear": 1.0,
   "safety_car": 0.06,
   "laps": 20

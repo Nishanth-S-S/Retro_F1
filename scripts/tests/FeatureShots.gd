@@ -100,7 +100,7 @@ func _ui() -> void:
 	hub.call("_close_modal")
 	Career.state()["pending_event"] = {}
 	Career.state()["board"] = 60
-	RaceReport.show(hub, {"race": "Falcon Ridge GP", "mine": [{"name": "Alex Albron", "position": 3, "dnf": false, "points": 15}, {"name": "Karlos Saenz", "position": 9, "dnf": true, "dsq": true, "dsq_reason": "REAR WING ANGLE 10, MAXIMUM 9", "points": 0}], "prize": 2400, "sponsor": 900, "salaries": 1800, "upkeep": 300, "staff": 280, "research": 31, "board_change": 6, "board": 66})
+	RaceReport.show(hub, {"race": "Italian GP", "mine": [{"name": "Alex Albron", "position": 3, "dnf": false, "points": 15}, {"name": "Karlos Saenz", "position": 9, "dnf": true, "dsq": true, "dsq_reason": "REAR WING ANGLE 10, MAXIMUM 9", "points": 0}], "prize": 2400, "sponsor": 900, "salaries": 1800, "upkeep": 300, "staff": 280, "research": 31, "board_change": 6, "board": 66})
 	await _shot("c_report")
 	hub = await _goto("res://scenes/career/CareerHub.tscn")
 	var junior: String = Career.market()[0]["id"]
@@ -199,10 +199,6 @@ func _race() -> void:
 	driver.others = race.cars
 	await _shot("u_grid", 0.6)
 	await _shot("v_race_wet", 9.0)
-	for v in [1, 2, 3, 4, 5]:
-		race.race3d.set_view(v)
-		await _shot("v_view_%s" % Race3D.VIEWS[v].to_lower().replace(" ", "_"), 0.5)
-	race.race3d.set_view(0)
 	print("fps with %d cars: %d" % [race.cars.size(), Engine.get_frames_per_second()])
 	# A narrow section of the track (4.6 car widths instead of 6.32).
 	if not race.track.narrow_sections.is_empty():
