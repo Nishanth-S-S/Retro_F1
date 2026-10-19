@@ -289,6 +289,13 @@ func _build_gantry() -> void:
 		_lights.append(l)
 
 
+## Road height under a car (elevation profile; 0 on a flat circuit).
+func height_at_car(car: VehicleController) -> float:
+	if car == null or not is_instance_valid(car):
+		return 0.0
+	return data.height_at(car.track_index) if data.has_method("height_at") else 0.0
+
+
 ## The start lights: how many of the five are on.
 func set_lights(count: int) -> void:
 	for k in _lights.size():

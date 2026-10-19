@@ -199,12 +199,9 @@ func _race() -> void:
 	driver.others = race.cars
 	await _shot("u_grid", 0.6)
 	await _shot("v_race_wet", 9.0)
-	race.race3d.set_view(1)
-	await _shot("v_view_high", 0.5)
-	race.race3d.set_view(2)
-	await _shot("v_view_cockpit", 0.5)
-	race.race3d.set_view(3)
-	await _shot("v_view_top", 0.5)
+	for v in [1, 2, 3, 4, 5]:
+		race.race3d.set_view(v)
+		await _shot("v_view_%s" % Race3D.VIEWS[v].to_lower().replace(" ", "_"), 0.5)
 	race.race3d.set_view(0)
 	print("fps with %d cars: %d" % [race.cars.size(), Engine.get_frames_per_second()])
 	# A narrow section of the track (4.6 car widths instead of 6.32).

@@ -50,6 +50,11 @@ func _init() -> void:
 	right.add_child(UIKit.spacer(6))
 	right.add_child(UIKit.label("CAMERA", 13, UIKit.TEXT_DIM))
 	_toggle(right, "Camera Rotation", "camera_rotation")
+	_slider(right, "Cockpit Field of View", "cockpit_fov", 0.0, 1.0)
+	_toggle(right, "Reduced Halo (cockpit)", "reduced_halo")
+	_toggle(right, "Reduced Camera Motion", "reduced_motion")
+	_choice(right, "Graphics", "graphics", ["LOW", "MED", "HIGH"])
+	_choice(right, "Retro Effects", "retro_fx", ["OFF", "SUBTLE", "STRONG"])
 	right.add_child(UIKit.spacer(6))
 	var reset := UIKit.button("RESET ALL PROGRESS", 14)
 	reset.pressed.connect(func() -> void:

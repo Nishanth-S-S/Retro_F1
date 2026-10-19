@@ -29,6 +29,11 @@ const DEFAULT_SETTINGS := {
 	# 0 = classic overhead camera, 1 = driver's view (low, close, looking up the road).
 	"camera_mode": 1,
 	"camera_view": 0,
+	# Cockpit camera: vertical FOV 55-75 deg (0..1), a thinner see-through halo, calmer motion,
+	# and per-car calibration saved from the F6 panel.
+	"cockpit_fov": 0.35, "reduced_halo": false, "reduced_motion": false, "cockpit_cal": {},
+	# 3D presentation: 0 LOW, 1 MEDIUM, 2 HIGH; retro effects 0 OFF, 1 SUBTLE, 2 STRONG.
+	"graphics": 2, "retro_fx": 0,
 }
 
 var economy: Dictionary = {}

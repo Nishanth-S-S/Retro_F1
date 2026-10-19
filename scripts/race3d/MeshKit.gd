@@ -41,6 +41,19 @@ func quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, normal: 
 		_st.add_vertex(p)
 
 
+## A thin square bar from `a` to `b` (halo tubes, struts, poles).
+func rod(a: Vector3, b: Vector3, thickness: float, color: Color) -> void:
+	var dir := b - a
+	var length := dir.length()
+	if length < 0.0001:
+		return
+	var x := dir / length
+	var up := Vector3.UP if absf(x.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var z := x.cross(up).normalized()
+	var y := z.cross(x).normalized()
+	box((a + b) * 0.5, Vector3(length + thickness * 0.5, thickness, thickness), color, Basis(x, y, z))
+
+
 ## A ring of boxes approximating a cylinder along X (wheels).
 func cylinder_x(center: Vector3, radius: float, width: float, color: Color, sides: int = 8) -> void:
 	for i in sides:
