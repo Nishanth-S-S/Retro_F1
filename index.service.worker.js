@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1794101187|20515796';
+const CACHE_VERSION = '1794102065|9691337';
 /** @type {string} */
 const CACHE_PREFIX = 'Gridline-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
